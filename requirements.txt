@@ -1,0 +1,11 @@
+flask
+flask-login
+flask-sqlalchemy
+pillow
+torch
+diffusers
+transformers
+accelerate
+safetensors
+SpeechRecognition
+google-generativeai

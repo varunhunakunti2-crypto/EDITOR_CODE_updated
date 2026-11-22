@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}My products{% endblock %}
+{% block content %}
+<div class="container page">
+  <div class="page-head">
+    <div>
+      <h1>My products</h1>
+      <p>Items in your catalogue. Add a photo, price and a short description.</p>
+    </div>
+    <div class="head-actions">
+      <a href="{{ url_for('shop_dashboard') }}" class="btn btn-ghost btn-lg">{{ icon('store') }} Shop dashboard</a>
+      <a href="{{ url_for('product_add') }}" class="btn btn-primary btn-lg">{{ icon('plus') }} Add product</a>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><b>{{ products|length }}</b><span>Products listed</span></div>
+    <div class="stat"><b>{{ products|selectattr('availability', 'equalto', 'in_stock')|list|length }}</b><span>In stock</span></div>
+    <div class="stat"><b>{{ products|map(attribute='category')|select|unique|list|length }}</b><span>Categories</span></div>
+  </div>
+
+  <div class="products">
+    {% for p in products %}
+    <article class="product-card">
+      <div class="product-media">
+        <img src="{{ url_for('static', filename='uploads/products/' + p.image_file) }}" alt="{{ p.name }}" loading="lazy">
+        {% if p.category %}<span class="tag">{{ p.category }}</span>{% endif %}
+      </div>
+      <div class="product-body">
+        <h2>{{ p.name }}</h2>
+        <div class="product-price">₹{{ '%.2f'|format(p.price) }}</div>
+        {% if p.description %}<p class="product-desc">{{ p.description }}</p>{% endif %}
+        <dl class="product-meta">
+          {% if p.dimensions %}<div><dt>Size</dt><dd>{{ p.dimensions }}</dd></div>{% endif %}
+          <div><dt>Availability</dt><dd><span class="role-badge">{{ p.availability_label }}</span></dd></div>
+          <div><dt>Added</dt><dd>{{ p.created_at|date }}</dd></div>
+        </dl>
+        <div class="product-actions">
+          <a href="{{ url_for('product_detail', product_id=p.id) }}" class="btn btn-light btn-block">{{ icon('expand') }} View details</a>
+          <form method="POST" action="{{ url_for('product_delete', product_id=p.id) }}"
+                onsubmit="return confirm('Delete {{ p.name }} from your catalogue?');">
+            <button type="submit" class="btn btn-ghost btn-block">{{ icon('x') }} Delete</button>
+          </form>
+        </div>
+      </div>
+    </article>
+    {% else %}
+    <div class="empty">
+      {{ icon('store') }}
+      <h2>Your catalogue is empty</h2>
+      <p>Upload your first product so customers can see what you offer.</p>
+      <a href="{{ url_for('product_add') }}" class="btn btn-primary btn-lg">Add your first product</a>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

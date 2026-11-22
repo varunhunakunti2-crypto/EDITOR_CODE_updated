@@ -1,0 +1,24 @@
+# Secrets / local config (commit only the safe template)
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local data: accounts, designs and uploaded images
+instance/
+*.db
+*.sqlite
+*.sqlite3
+uploads/
+static/uploads/
+
+# Logs / OS
+*.log
+.DS_Store
+Thumbs.db

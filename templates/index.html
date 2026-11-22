@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}See new furniture in your room{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="container hero-grid">
+    <div>
+      <h1>Place anything in your room before you buy it.</h1>
+      <p class="lead">Upload a photo, describe what you want to add, and the AI paints it into the scene — a painting, a TV, a vase — so you can judge the look in seconds.</p>
+      <div class="hero-actions">
+        {% if current_user.is_authenticated %}
+          <a href="{{ url_for('design') }}" class="btn btn-primary btn-lg">{{ icon('wand') }} Start a new design</a>
+          <a href="{{ url_for('dashboard') }}" class="btn btn-ghost btn-lg">View my designs</a>
+        {% else %}
+          <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg">Create free account</a>
+          <a href="{{ url_for('login') }}" class="btn btn-ghost btn-lg">Log in</a>
+        {% endif %}
+      </div>
+      <p class="hero-note">{{ icon('bolt') }} Results in under a minute. PNG or JPG up to 16 MB.</p>
+    </div>
+
+    <figure style="margin:0">
+      <div class="compare" data-compare>
+        <img src="{{ url_for('static', filename='images/demo-before.jpg') }}" alt="Living room with three framed prints above the sofa">
+        <img class="after" src="{{ url_for('static', filename='images/demo-after.jpg') }}" alt="The same living room with a large wall clock in place of the prints">
+        <span class="tag l">Before</span><span class="tag r">After</span>
+        <div class="handle"></div>
+        <input type="range" min="0" max="100" value="50" aria-label="Compare before and after">
+      </div>
+      <figcaption class="compare-caption">Drag to compare. Prompt: “a large wall clock”</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="section tint">
+  <div class="container">
+    <div class="section-head">
+      <h2>From photo to preview in three steps</h2>
+      <p>No design software and no measuring. Just a photo and a sentence.</p>
+    </div>
+    <div class="steps">
+      <div class="step"><h3>Upload your room</h3><p>Take a straight-on photo of the wall or corner you want to change.</p></div>
+      <div class="step"><h3>Describe the addition</h3><p>Write what you want to see, like “a modern TV on the wall”.</p></div>
+      <div class="step"><h3>Review the result</h3><p>Compare before and after, then save the design to your gallery.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container features">
+    <div class="feature">{{ icon('wand') }}<h3>Plain-language prompts</h3><p>Describe objects the way you would to a friend. No settings to learn.</p></div>
+    <div class="feature">{{ icon('layers') }}<h3>Blends with your lighting</h3><p>New items are matched to the shadows and colours already in your photo.</p></div>
+    <div class="feature">{{ icon('image') }}<h3>Every version saved</h3><p>Your gallery keeps each original and result so you can compare ideas later.</p></div>
+  </div>
+</section>
+
+<section class="section" style="padding-top:0">
+  <div class="container">
+    <div class="cta">
+      <div>
+        <h2>Try your first design today.</h2>
+        <p>Free to sign up. Your photos stay in your account.</p>
+      </div>
+      <a href="{{ url_for('design') if current_user.is_authenticated else url_for('register') }}" class="btn btn-light btn-lg">{{ 'New design' if current_user.is_authenticated else 'Create free account' }}</a>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block footer %}
+<footer class="site-footer"><div class="container"><span>© AI Interior Designer</span><span>Built with Stable Diffusion inpainting</span></div></footer>
+{% endblock %}

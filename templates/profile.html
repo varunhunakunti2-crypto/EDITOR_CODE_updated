@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Profile{% endblock %}
+{% block content %}
+<div class="container page">
+  <div class="page-head"><div><h1>Your profile</h1><p>Account details and recent activity.</p></div></div>
+  <div class="profile">
+    <section class="panel profile-card">
+      <div class="avatar" aria-hidden="true">{{ current_user.username[0] }}</div>
+      <h2>{{ current_user.username }}</h2>
+      <p class="since">Member since {{ current_user.created_at|date('%B %Y') }}</p>
+      <a href="{{ url_for('logout') }}" class="btn btn-ghost btn-block">{{ icon('logout') }} Log out</a>
+    </section>
+
+    <div>
+      <section class="panel">
+        <h2>Account</h2>
+        <dl class="details" style="margin:1rem 0 0">
+          <div><dt>Username</dt><dd>{{ current_user.username }}</dd></div>
+          <div><dt>Email</dt><dd>{{ current_user.email }}</dd></div>
+          <div><dt>Role</dt><dd><span class="role-badge">{{ current_user.role_label }}</span></dd></div>
+          <div><dt>Designs created</dt><dd>{{ current_user.designs|length }}</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel">
+        <h2>Recent designs</h2>
+        {% set recent = current_user.designs|sort(attribute='created_at', reverse=True) %}
+        {% if recent %}
+          <div class="recent" style="margin-top:1rem">
+            {% for d in recent[:6] %}
+            <a href="{{ url_for('dashboard') }}"><img src="{{ url_for('static', filename='uploads/output/' + d.output_image) }}" alt="{{ d.prompt }}" loading="lazy"></a>
+            {% endfor %}
+          </div>
+          <a href="{{ url_for('dashboard') }}" class="btn btn-ghost" style="margin-top:1.2rem">View all designs</a>
+        {% else %}
+          <p class="sub" style="margin-top:.6rem">You haven’t created a design yet.</p>
+          <a href="{{ url_for('design') }}" class="btn btn-primary">{{ icon('plus') }} Create a design</a>
+        {% endif %}
+      </section>
+    </div>
+  </div>
+</div>
+{% endblock %}

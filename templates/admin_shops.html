@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Shops · Admin{% endblock %}
+{% block content %}
+<div class="container page">
+  <div class="page-head">
+    <div>
+      <h1>Shops</h1>
+      <p>Shop owners on the platform and the products they list.</p>
+    </div>
+    <div class="head-actions">
+      <a href="{{ url_for('admin_dashboard') }}" class="btn btn-ghost btn-lg">{{ icon('grid') }} Admin dashboard</a>
+      <a href="{{ url_for('admin_users') }}" class="btn btn-primary btn-lg">{{ icon('user') }} Users</a>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><b>{{ shops|length }}</b><span>Shops</span></div>
+    <div class="stat"><b>{{ total_products }}</b><span>Products listed</span></div>
+    <div class="stat"><b>{{ active_shops }}</b><span>Active shops</span></div>
+  </div>
+
+  <section class="panel">
+    <h2>Shop owners</h2>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Shop</th><th>Owner email</th><th>Products</th><th>In stock</th><th>Joined</th><th></th></tr></thead>
+        <tbody>
+          {% for s in shops %}
+          <tr>
+            <td><b>{{ s.username }}</b></td>
+            <td>{{ s.email }}</td>
+            <td>{{ s.products|length }}</td>
+            <td>{{ s.products|selectattr('availability', 'equalto', 'in_stock')|list|length }}</td>
+            <td>{{ s.created_at|date }}</td>
+            <td><a href="{{ url_for('admin_shop', owner_id=s.id) }}">View catalogue →</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6">No shop owners have registered yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

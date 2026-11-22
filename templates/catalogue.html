@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Furniture catalogue{% endblock %}
+{% block content %}
+<div class="container page">
+  <div class="page-head">
+    <div>
+      <h1>Furniture catalogue</h1>
+      <p>Browse items from our shops. Open one to see its details.</p>
+    </div>
+    {% if current_user.is_admin %}
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-ghost btn-lg">{{ icon('grid') }} Admin dashboard</a>
+    {% endif %}
+  </div>
+
+  <div class="stats">
+    <div class="stat"><b>{{ products|length }}</b><span>Products</span></div>
+    <div class="stat"><b>{{ products|map(attribute='category')|select|unique|list|length }}</b><span>Categories</span></div>
+  </div>
+
+  <div class="products">
+    {% for p in products %}
+    <article class="product-card">
+      <div class="product-media">
+        <img src="{{ url_for('static', filename='uploads/products/' + p.image_file) }}" alt="{{ p.name }}" loading="lazy">
+        {% if p.category %}<span class="tag">{{ p.category }}</span>{% endif %}
+      </div>
+      <div class="product-body">
+        <h2>{{ p.name }}</h2>
+        <p class="sub">{{ p.owner.username }}</p>
+        <div class="product-price">₹{{ '%.2f'|format(p.price) }}</div>
+        <dl class="product-meta">
+          <div><dt>Availability</dt><dd><span class="role-badge">{{ p.availability_label }}</span></dd></div>
+          {% if p.dimensions %}<div><dt>Size</dt><dd>{{ p.dimensions }}</dd></div>{% endif %}
+        </dl>
+        <a href="{{ url_for('product_detail', product_id=p.id) }}" class="btn btn-primary btn-block">{{ icon('expand') }} View details</a>
+      </div>
+    </article>
+    {% else %}
+    <div class="empty">
+      {{ icon('store') }}
+      <h2>No products yet</h2>
+      <p>Check back once shops have listed their furniture.</p>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

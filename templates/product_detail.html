@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ product.name }}{% endblock %}
+{% block content %}
+<div class="container page">
+  <div class="page-head">
+    <div>
+      <h1>{{ product.name }}</h1>
+      <p>Listed by {{ product.owner.username }}{% if product.category %} · {{ product.category }}{% endif %}</p>
+    </div>
+    <a href="{{ url_for('catalogue') }}" class="btn btn-ghost btn-lg">{{ icon('grid') }} Back to catalogue</a>
+  </div>
+
+  <div class="detail-grid">
+    <div class="detail-media">
+      <img src="{{ url_for('static', filename='uploads/products/' + product.image_file) }}" alt="{{ product.name }}">
+    </div>
+
+    <section class="panel detail-info">
+      <div class="product-price">₹{{ '%.2f'|format(product.price) }}</div>
+      <p><span class="role-badge">{{ product.availability_label }}</span></p>
+
+      <dl class="details">
+        <div><dt>Product</dt><dd>{{ product.name }}</dd></div>
+        {% if product.category %}<div><dt>Category</dt><dd>{{ product.category }}</dd></div>{% endif %}
+        {% if product.dimensions %}<div><dt>Dimensions</dt><dd>{{ product.dimensions }}</dd></div>{% endif %}
+        <div><dt>Sold by</dt><dd>{{ product.owner.username }}</dd></div>
+        <div><dt>Listed</dt><dd>{{ product.created_at|date }}</dd></div>
+        {% if product.description %}
+        <div><dt>Description</dt><dd>{{ product.description }}</dd></div>
+        {% endif %}
+      </dl>
+
+      <div class="head-actions" style="margin-top:1.5rem">
+        <a href="{{ url_for('result', design_id=latest_design.id) if latest_design else url_for('design') }}"
+           class="btn btn-primary btn-lg">{{ icon('wand') }} Place in my design</a>
+        {% if current_user.is_admin or current_user.id == product.owner_id %}
+        <a href="{{ url_for('products') }}" class="btn btn-ghost btn-lg">{{ icon('grid') }} Manage catalogue</a>
+        {% endif %}
+      </div>
+      <p class="sub" style="margin-top:.8rem">Tip: on the result page, drag this item from the furniture palette onto your design.</p>
+    </section>
+  </div>
+</div>
+{% endblock %}

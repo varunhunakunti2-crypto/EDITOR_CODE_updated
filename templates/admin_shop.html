@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ owner.username }} · Shop{% endblock %}
+{% block content %}
+<div class="container page">
+  <div class="page-head">
+    <div>
+      <h1>{{ owner.username }}'s catalogue</h1>
+      <p>Products listed by {{ owner.email }} · joined {{ owner.created_at|date }}</p>
+    </div>
+    <a href="{{ url_for('admin_shops') }}" class="btn btn-ghost btn-lg">{{ icon('store') }} All shops</a>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><b>{{ products|length }}</b><span>Products</span></div>
+    <div class="stat"><b>{{ products|selectattr('availability', 'equalto', 'in_stock')|list|length }}</b><span>In stock</span></div>
+    <div class="stat"><b>{{ products|map(attribute='category')|select|unique|list|length }}</b><span>Categories</span></div>
+  </div>
+
+  <section class="panel">
+    <h2>Products</h2>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Availability</th><th>Added</th><th></th></tr></thead>
+        <tbody>
+          {% for p in products %}
+          <tr>
+            <td><b>{{ p.name }}</b></td>
+            <td>{{ p.category or '—' }}</td>
+            <td>₹{{ '%.2f'|format(p.price) }}</td>
+            <td><span class="role-badge">{{ p.availability_label }}</span></td>
+            <td>{{ p.created_at|date }}</td>
+            <td><a href="{{ url_for('product_detail', product_id=p.id) }}">Details →</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6">This shop has no products yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

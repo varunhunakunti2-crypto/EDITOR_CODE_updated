@@ -1,0 +1,63 @@
+{% from "_icons.html" import icon %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{% endblock %} · AI Interior Designer</title>
+    <meta name="description" content="Upload a photo of your room, describe what to add, and see it placed in seconds.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <header class="site-header">
+        <div class="container">
+            <a class="brand" href="{{ url_for(home_endpoint) }}">
+                <span class="brand-mark">{{ icon('logo') }}</span> AI Interior Designer
+            </a>
+            <button class="nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false">{{ icon('menu') }}</button>
+            <nav class="nav" id="nav" aria-label="Main">
+                {% if current_user.is_authenticated %}
+                    {% if current_user.is_admin %}
+                    <a href="{{ url_for('admin_dashboard') }}" class="{{ 'active' if request.endpoint == 'admin_dashboard' }}">{{ icon('grid') }} Admin</a>
+                    {% endif %}
+                    {% if current_user.has_role('shop_owner') %}
+                    <a href="{{ url_for('shop_dashboard') }}" class="{{ 'active' if request.endpoint == 'shop_dashboard' }}">{{ icon('store') }} Shop</a>
+                    {% endif %}
+                    <a href="{{ url_for('catalogue') }}" class="{{ 'active' if request.endpoint in ['catalogue', 'product_detail'] }}">{{ icon('store') }} Furniture</a>
+                    <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">{{ icon('grid') }} My designs</a>
+                    <a href="{{ url_for('profile') }}" class="{{ 'active' if request.endpoint == 'profile' }}">{{ icon('user') }} Profile</a>
+                    <a href="{{ url_for('logout') }}">{{ icon('logout') }} Log out</a>
+                    <a href="{{ url_for('design') }}" class="btn btn-primary">{{ icon('plus') }} New design</a>
+                {% else %}
+                    <a href="{{ url_for('login') }}" class="{{ 'active' if request.endpoint == 'login' }}">Log in</a>
+                    <a href="{{ url_for('register') }}" class="btn btn-primary">Get started</a>
+                {% endif %}
+            </nav>
+        </div>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="toasts" role="status" aria-live="polite">
+        {% for category, message in messages %}
+        <div class="toast {{ 'error' if category == 'error' }}">
+            {{ icon('alert' if category == 'error' else 'check') }}
+            <p>{{ message }}</p>
+            <button type="button" aria-label="Dismiss" data-dismiss>{{ icon('x') }}</button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <main>{% block content %}{% endblock %}</main>
+
+    {% block footer %}{% endblock %}
+
+    <script src="{{ url_for('static', filename='JS/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

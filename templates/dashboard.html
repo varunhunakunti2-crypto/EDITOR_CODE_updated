@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}My designs{% endblock %}
+{% block content %}
+<div class="container page">
+  <div class="page-head">
+    <div>
+      <h1>Hello, {{ current_user.username }}</h1>
+      <p><span class="role-badge">{{ current_user.role_label }}</span> &nbsp; {% if designs %}Open any design to compare it with the original.{% else %}Your designs will appear here.{% endif %}</p>
+    </div>
+    <a href="{{ url_for('design') }}" class="btn btn-primary btn-lg">{{ icon('plus') }} New design</a>
+  </div>
+
+  {% if designs %}
+  <div class="stats">
+    <div class="stat"><b>{{ designs|length }}</b><span>Designs created</span></div>
+    <div class="stat"><b>{{ designs[0].created_at|date('%d %b') }}</b><span>Latest design</span></div>
+  </div>
+  {% endif %}
+
+  <div class="gallery">
+    {% for d in designs %}
+    {% set before = url_for('static', filename='uploads/input/' + d.input_image) %}
+    {% set after = url_for('static', filename='uploads/output/' + d.output_image) %}
+    <article class="design">
+      <button type="button" class="design-media" data-open-compare
+              data-before="{{ before }}" data-after="{{ after }}" data-prompt="{{ d.prompt }}"
+              aria-label="Compare before and after for: {{ d.prompt }}">
+        <img src="{{ after }}" alt="Generated design: {{ d.prompt }}" loading="lazy">
+        <span class="tag">Result</span>
+        <span class="zoom">{{ icon('expand') }}</span>
+      </button>
+      <div class="design-body">
+        <p class="design-prompt">{{ d.prompt }}</p>
+        <div class="design-meta">
+          <span>{{ d.created_at|date('%d %b %Y, %H:%M') }}</span>
+          <span><a href="{{ url_for('result', design_id=d.id) }}">{{ icon('store') }} Where to buy</a> &nbsp; <a href="{{ after }}" download>{{ icon('download') }} Download</a></span>
+        </div>
+      </div>
+    </article>
+    {% else %}
+    <div class="empty">
+      {{ icon('image') }}
+      <h2>No designs yet</h2>
+      <p>Upload a photo of a room and describe what to add. Your first result takes under a minute.</p>
+      <a href="{{ url_for('design') }}" class="btn btn-primary btn-lg">Create your first design</a>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="modal" id="compareModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal-card">
+    <div class="modal-top">
+      <h3 id="modalTitle">Before and after</h3>
+      <button type="button" class="icon-btn" data-close-modal aria-label="Close">{{ icon('x') }}</button>
+    </div>
+    <div class="compare" data-compare id="modalCompare">
+      <img id="modalBefore" src="" alt="Original room">
+      <img class="after" id="modalAfter" src="" alt="Generated design">
+      <span class="tag l">Before</span><span class="tag r">After</span>
+      <div class="handle"></div>
+      <input type="range" min="0" max="100" value="50" aria-label="Compare before and after">
+    </div>
+    <p class="modal-prompt" id="modalPrompt"></p>
+    <div class="modal-actions">
+      <a class="btn btn-primary" id="modalDownload" href="#" download>{{ icon('download') }} Download result</a>
+      <a class="btn btn-ghost" href="{{ url_for('design') }}">{{ icon('plus') }} New design</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  const modal = document.getElementById('compareModal');
+  let lastFocus = null;
+  function close(){ modal.classList.remove('open'); if(lastFocus) lastFocus.focus(); }
+  document.querySelectorAll('[data-open-compare]').forEach(btn => btn.addEventListener('click', () => {
+    lastFocus = btn;
+    document.getElementById('modalBefore').src = btn.dataset.before;
+    document.getElementById('modalAfter').src = btn.dataset.after;
+    document.getElementById('modalPrompt').textContent = 'Prompt: ' + btn.dataset.prompt;
+    document.getElementById('modalDownload').href = btn.dataset.after;
+    const r = modal.querySelector('input[type=range]'); r.value = 50; r.dispatchEvent(new Event('input'));
+    modal.classList.add('open');
+    modal.querySelector('[data-close-modal]').focus();
+  }));
+  modal.addEventListener('click', e => { if(e.target === modal || e.target.closest('[data-close-modal]')) close(); });
+  document.addEventListener('keydown', e => { if(e.key === 'Escape' && modal.classList.contains('open')) close(); });
+})();
+</script>
+{% endblock %}

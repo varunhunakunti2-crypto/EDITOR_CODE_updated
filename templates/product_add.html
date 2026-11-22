@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Add product{% endblock %}
+{% block content %}
+<div class="container page">
+  <div class="page-head">
+    <div>
+      <h1>Add a product</h1>
+      <p>List an item in your catalogue with a photo, price and availability.</p>
+    </div>
+    <a href="{{ url_for('products') }}" class="btn btn-ghost btn-lg">{{ icon('x') }} Cancel</a>
+  </div>
+
+  <section class="panel form-panel">
+    <form method="POST" enctype="multipart/form-data">
+      <div class="form-grid">
+        <div class="field">
+          <label for="name">Product name *</label>
+          <input class="input" id="name" type="text" name="name" maxlength="120" required autofocus placeholder="e.g. Oak bookshelf">
+        </div>
+        <div class="field">
+          <label for="category">Category</label>
+          <input class="input" id="category" type="text" name="category" maxlength="60" placeholder="e.g. Shelving, Seating, Lighting">
+        </div>
+        <div class="field">
+          <label for="price">Price (₹) *</label>
+          <input class="input" id="price" type="number" name="price" min="0" step="0.01" required placeholder="0.00">
+        </div>
+        <div class="field">
+          <label for="dimensions">Dimensions</label>
+          <input class="input" id="dimensions" type="text" name="dimensions" maxlength="60" placeholder="e.g. 90 × 30 × 120 cm">
+        </div>
+        <div class="field">
+          <label for="availability">Availability</label>
+          <select class="input" id="availability" name="availability">
+            {% for value, label in availability.items() %}
+            <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="image">Product image * (PNG, JPG, JPEG)</label>
+          <input class="input" id="image" type="file" name="image" accept=".png,.jpg,.jpeg,image/png,image/jpeg" required>
+          <p class="hint">Maximum upload size is 16 MB.</p>
+        </div>
+        <div class="field full">
+          <label for="description">Description</label>
+          <textarea class="textarea" id="description" name="description" maxlength="1000" rows="5" placeholder="Materials, colour, style and other details customers should know."></textarea>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg">{{ icon('plus') }} Add product</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Users · Admin{% endblock %}
+{% block content %}
+<div class="container page">
+  <div class="page-head">
+    <div>
+      <h1>Users</h1>
+      <p>Every account on the platform, with role and activity.</p>
+    </div>
+    <div class="head-actions">
+      <a href="{{ url_for('admin_dashboard') }}" class="btn btn-ghost btn-lg">{{ icon('grid') }} Admin dashboard</a>
+      <a href="{{ url_for('admin_shops') }}" class="btn btn-primary btn-lg">{{ icon('store') }} Shops</a>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><b>{{ users|length }}</b><span>Total users</span></div>
+    <div class="stat"><b>{{ users|selectattr('role', 'equalto', 'shop_owner')|list|length }}</b><span>Shop owners</span></div>
+    <div class="stat"><b>{{ users|selectattr('role', 'equalto', 'designer')|list|length }}</b><span>Designers</span></div>
+    <div class="stat"><b>{{ users|selectattr('role', 'equalto', 'admin')|list|length }}</b><span>Admins</span></div>
+  </div>
+
+  <section class="panel">
+    <h2>All accounts</h2>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Designs</th><th>Products</th><th>Joined</th><th></th></tr></thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td><b>{{ u.username }}</b></td>
+            <td>{{ u.email }}</td>
+            <td><span class="role-badge">{{ u.role_label }}</span></td>
+            <td>{{ u.designs|length }}</td>
+            <td>{{ u.products|length }}</td>
+            <td>{{ u.created_at|date }}</td>
+            <td>
+              {% if u.role == 'shop_owner' %}
+              <a href="{{ url_for('admin_shop', owner_id=u.id) }}">View shop</a>
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7">No users yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

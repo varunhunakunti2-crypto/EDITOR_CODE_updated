@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}New design{% endblock %}
+{% block content %}
+<div class="container page">
+  <div class="page-head">
+    <div>
+      <h1>New design</h1>
+      <p>Upload a room photo, describe what to add, and pick where it should go.</p>
+    </div>
+  </div>
+
+  <form method="POST" enctype="multipart/form-data" id="designForm" class="studio">
+    <div>
+      <section class="panel">
+        <h2>1. Your room photo</h2>
+        <p class="sub">A clear, well-lit photo works best.</p>
+        <label class="dropzone" id="dropzone">
+          {{ icon('upload') }}
+          <strong id="dropTitle">Choose a photo or drop it here</strong>
+          <small>PNG, JPG or JPEG, up to 16 MB</small>
+          <input type="file" name="image" id="imageInput" accept="image/png,image/jpeg" required>
+        </label>
+      </section>
+
+      <section class="panel">
+        <h2>2. What should we add?</h2>
+        <p class="sub">Type it, or tap the microphone and say it. Both work.</p>
+        <div class="field" style="margin-bottom:0">
+          <label for="prompt" class="sr-only">Describe the object</label>
+          <div class="prompt-wrap">
+            <textarea class="textarea" id="prompt" name="prompt" maxlength="500" required
+              placeholder="A modern flat-screen TV mounted on the wall"></textarea>
+            <button type="button" class="mic-btn" id="micBtn" aria-label="Speak your prompt" title="Speak your prompt">{{ icon('mic') }}</button>
+          </div>
+          <div class="voice-row">
+            <span class="voice-status" id="voiceStatus" role="status" aria-live="polite"></span>
+            <select class="voice-lang" id="voiceLang" aria-label="Speech language">
+              <option value="en-IN">English (India)</option>
+              <option value="en-US">English (US)</option>
+              <option value="en-GB">English (UK)</option>
+              <option value="hi-IN">हिन्दी</option>
+              <option value="te-IN">తెలుగు</option>
+              <option value="ta-IN">தமிழ்</option>
+            </select>
+          </div>
+          <div class="chips" aria-label="Example prompts">
+            <button type="button" class="chip" data-prompt="A large framed abstract painting">Abstract painting</button>
+            <button type="button" class="chip" data-prompt="A modern flat-screen TV on the wall">Wall TV</button>
+            <button type="button" class="chip" data-prompt="A round wall mirror with a brass frame">Brass mirror</button>
+            <button type="button" class="chip" data-prompt="A large wall clock">Wall clock</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>3. Where should it go?</h2>
+        <p class="sub">Pick a spot. The mask is created there and only that area is edited.</p>
+        <div class="pos-grid" role="radiogroup" aria-label="Placement position">
+          {% for value, label in positions.items() %}
+          <label>
+            <input type="radio" name="position" value="{{ value }}" {{ 'checked' if value == default_position }}>
+            <span>{{ label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>4. Where can you buy it?</h2>
+        <p class="sub">Enter your city or area and we will suggest nearby places that sell it. Optional.</p>
+        <div class="loc-row">
+          <input class="input" type="text" id="location" name="location" maxlength="200" placeholder="e.g. Banjara Hills, Hyderabad" autocomplete="address-level2">
+          <button type="button" class="btn btn-ghost" id="locBtn">{{ icon('pin') }} Use my location</button>
+        </div>
+        <p class="hint" id="locHint"></p>
+      </section>
+
+      <section class="panel">
+        <h2>Tips for better results</h2>
+        <ul class="tips" style="margin-top:1rem">
+          <li>{{ icon('target') }}<span>The object is placed in the highlighted zone. Choose the position where that spot is free.</span></li>
+          <li>{{ icon('wand') }}<span>Be specific: “a walnut bookshelf” works better than “shelf”.</span></li>
+          <li>{{ icon('bolt') }}<span>Generating takes 30 to 60 seconds. Keep this page open.</span></li>
+        </ul>
+      </section>
+
+      <button type="submit" class="btn btn-primary btn-lg btn-block" id="submitBtn" style="margin-top:20px">{{ icon('wand') }} Generate design</button>
+    </div>
+
+    <aside class="studio-aside">
+      <div class="stage" id="stage">
+        <div class="stage-empty">{{ icon('image') }}<p>Your photo will appear here with the placement zone marked.</p></div>
+        <img id="previewImg" alt="Preview of your uploaded room" hidden>
+        <div class="zone" id="zone"><span>Object goes here</span></div>
+      </div>
+      <p class="stage-note">Your photo is resized to a square for the AI, so the preview shows the same crop.</p>
+    </aside>
+  </form>
+</div>
+
+<div class="busy" id="busy" role="alert" aria-live="assertive">
+  <div>
+    <div class="spinner"></div>
+    <h2>Designing your room</h2>
+    <p>This takes 30 to 60 seconds. Please keep this page open.</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  const input = document.getElementById('imageInput');
+  const drop = document.getElementById('dropzone');
+  const stage = document.getElementById('stage');
+  const img = document.getElementById('previewImg');
+  const title = document.getElementById('dropTitle');
+  const MAX = 16 * 1024 * 1024;
+
+  function show(file){
+    if(!file) return;
+    if(!/^image\/(png|jpe?g)$/.test(file.type)){ alert('Please choose a PNG or JPG image.'); input.value=''; return; }
+    if(file.size > MAX){ alert('That file is larger than 16 MB. Please choose a smaller photo.'); input.value=''; return; }
+    const r = new FileReader();
+    r.onload = e => { img.src = e.target.result; img.hidden = false; stage.classList.add('has-image'); };
+    r.readAsDataURL(file);
+    title.textContent = file.name;
+  }
+  input.addEventListener('change', () => show(input.files[0]));
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('drag'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('drag'); }));
+  drop.addEventListener('drop', e => {
+    if(e.dataTransfer.files.length){ input.files = e.dataTransfer.files; show(input.files[0]); }
+  });
+
+  document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
+    const t = document.getElementById('prompt'); t.value = c.dataset.prompt; t.focus();
+  }));
+
+
+  // ---- Placement positions (kept in sync with masking.py) ----
+  const IMG = 512, ZW = 150, ZH = 130, M = 26;
+  const zone = document.getElementById('zone');
+  const axis = (i, len) => i === 0 ? M : (i === 1 ? (IMG - len) / 2 : IMG - M - len);
+  const COLS = {left:0, center:1, right:2}, ROWS = {top:0, middle:1, bottom:2};
+  function placeZone(value){
+    const [row, col] = value.split('_');
+    const x = axis(COLS[col], ZW), y = axis(ROWS[row], ZH);
+    zone.style.left = (100 * x / IMG) + '%';
+    zone.style.top = (100 * y / IMG) + '%';
+    zone.style.width = (100 * ZW / IMG) + '%';
+    zone.style.height = (100 * ZH / IMG) + '%';
+    zone.classList.toggle('flip', row === 'bottom');  // keep the label inside the photo
+  }
+  document.querySelectorAll('input[name=position]').forEach(r => {
+    r.addEventListener('change', () => placeZone(r.value));
+    if (r.checked) placeZone(r.value);
+  });
+
+  // ---- Voice input: record in the browser, transcribe with SpeechRecognition on the server ----
+  const mic = document.getElementById('micBtn');
+  const vstatus = document.getElementById('voiceStatus');
+  const promptBox = document.getElementById('prompt');
+  const TARGET_RATE = 16000;
+  let recorder = null, chunks = [], stream = null, autoStop = null;
+
+  function say(msg, isErr){ vstatus.textContent = msg; vstatus.classList.toggle('err', !!isErr); }
+
+  function encodeWav(samples, rate){
+    const buf = new ArrayBuffer(44 + samples.length * 2), v = new DataView(buf);
+    const str = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+    str(0,'RIFF'); v.setUint32(4, 36 + samples.length * 2, true); str(8,'WAVE'); str(12,'fmt ');
+    v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+    v.setUint32(24,rate,true); v.setUint32(28,rate*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true);
+    str(36,'data'); v.setUint32(40, samples.length * 2, true);
+    for (let i = 0; i < samples.length; i++){
+      const s = Math.max(-1, Math.min(1, samples[i]));
+      v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    }
+    return new Blob([v], {type:'audio/wav'});
+  }
+
+  async function toWav(blob){
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
+    ctx.close();
+    const frames = Math.max(1, Math.ceil(decoded.duration * TARGET_RATE));
+    const off = new OfflineAudioContext(1, frames, TARGET_RATE);  // downmix to mono + resample
+    const src = off.createBufferSource();
+    src.buffer = decoded; src.connect(off.destination); src.start();
+    const rendered = await off.startRendering();
+    return encodeWav(rendered.getChannelData(0), TARGET_RATE);
+  }
+
+  async function sendForTranscription(blob){
+    mic.classList.add('busy-mic'); say('Converting your speech to text...');
+    try {
+      const wav = await toWav(blob);
+      const fd = new FormData();
+      fd.append('audio', wav, 'speech.wav');
+      fd.append('language', document.getElementById('voiceLang').value);
+      const res = await fetch('{{ url_for("transcribe") }}', {method:'POST', body: fd, credentials:'same-origin'});
+      let data = {};
+      try { data = await res.json(); } catch(_) { data = {error: 'Unexpected server response. Please log in again.'}; }
+      if (!res.ok || data.error) throw new Error(data.error || 'Transcription failed.');
+      promptBox.value = (promptBox.value.trim() ? promptBox.value.trim() + ' ' : '') + data.text;
+      promptBox.dispatchEvent(new Event('input'));
+      say('Done. You can edit the text before generating.');
+    } catch (err) {
+      say(err.message || 'Could not transcribe. Please try again.', true);
+    } finally {
+      mic.classList.remove('busy-mic');
+    }
+  }
+
+  function stopRecording(){
+    clearTimeout(autoStop);
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+  }
+
+  async function startRecording(){
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder){
+      say('Voice input needs a modern browser opened via http://localhost or https.', true); return;
+    }
+    try { stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
+    catch (_) { say('Microphone access was blocked. Allow it in the browser address bar.', true); return; }
+    chunks = [];
+    recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    recorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      mic.classList.remove('rec'); mic.setAttribute('aria-label', 'Speak your prompt');
+      const blob = new Blob(chunks, {type: recorder.mimeType || 'audio/webm'});
+      if (blob.size < 1000) { say('Nothing was recorded. Please try again.', true); return; }
+      sendForTranscription(blob);
+    };
+    recorder.start();
+    mic.classList.add('rec'); mic.setAttribute('aria-label', 'Stop recording');
+    say('Listening... tap the microphone again to stop.');
+    autoStop = setTimeout(stopRecording, 15000);
+  }
+
+  mic.addEventListener('click', () => {
+    if (mic.classList.contains('busy-mic')) return;
+    (recorder && recorder.state === 'recording') ? stopRecording() : startRecording();
+  });
+
+  // ---- Use my location ----
+  const locInput = document.getElementById('location'), locHint = document.getElementById('locHint');
+  document.getElementById('locBtn').addEventListener('click', () => {
+    if (!navigator.geolocation){ locHint.textContent = 'Location is not supported here. Please type your area.'; return; }
+    locHint.textContent = 'Finding your location...';
+    navigator.geolocation.getCurrentPosition(async pos => {
+      const lat = pos.coords.latitude.toFixed(5), lon = pos.coords.longitude.toFixed(5);
+      let label = lat + ', ' + lon;
+      try {
+        const r = await fetch('https://nominatim.openstreetmap.org/reverse?format=json&zoom=14&lat=' + lat + '&lon=' + lon);
+        const j = await r.json(); const a = j.address || {};
+        const parts = [a.suburb || a.neighbourhood, a.city || a.town || a.village || a.county, a.state].filter(Boolean);
+        if (parts.length) label = parts.join(', ');
+      } catch(_) {}
+      locInput.value = label; locHint.textContent = 'Using: ' + label;
+    }, () => { locHint.textContent = 'Could not get your location. Please type your area instead.'; },
+    {timeout: 10000});
+  });
+
+  document.getElementById('designForm').addEventListener('submit', e => {
+    if(!input.files[0] || !document.getElementById('prompt').value.trim()){ e.preventDefault(); return; }
+    document.getElementById('busy').classList.add('on');
+    document.getElementById('submitBtn').disabled = true;
+  });
+})();
+</script>
+{% endblock %}

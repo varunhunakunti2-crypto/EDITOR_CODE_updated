@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Log in{% endblock %}
+{% block content %}
+<div class="auth">
+  <aside class="auth-visual">
+    <blockquote>Every room has a version you haven’t seen yet.</blockquote>
+  </aside>
+  <div class="auth-panel">
+    <div class="auth-card">
+      <h1>Welcome back</h1>
+      <p class="sub">Log in to see your saved designs.</p>
+      <form method="POST">
+        <div class="field">
+          <label for="username">Username</label>
+          <input class="input" id="username" type="text" name="username" autocomplete="username" required autofocus>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <div class="input-wrap">
+            <input class="input" id="password" type="password" name="password" autocomplete="current-password" required>
+            <button type="button" class="toggle-pw" data-toggle-pw="password" aria-label="Show password">{{ icon('eye') }}</button>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block btn-lg">Log in</button>
+      </form>
+      <p class="auth-alt">New here? <a href="{{ url_for('register') }}">Create an account</a></p>
+    </div>
+  </div>
+</div>
+{% endblock %}
