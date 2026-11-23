@@ -1,11 +1,33 @@
 # AI Interior Designer
 
-## Run
+A Flask app that turns a photo of a room into a design preview with local
+Stable Diffusion inpainting, then suggests nearby shops using Gemini. It also
+includes role-based dashboards, a shop-owner product catalogue and drag-and-drop
+furniture placement.
+
+**Repository:** https://github.com/varunhunakunti2-crypto/EDITOR_CODE_updated
+
+## Quick start
+    git clone https://github.com/varunhunakunti2-crypto/EDITOR_CODE_updated.git
+    cd EDITOR_CODE_updated
+    python -m venv .venv && .venv\Scripts\activate      # Windows
     pip install -r requirements.txt
-    python app.py        # then open http://localhost:5000  (use localhost, the microphone needs it)
+    copy .env.example .env                              # then edit the values
+    python app.py        # open http://localhost:5000 (use localhost — the microphone needs it)
+
+On macOS/Linux use `source .venv/bin/activate` and `cp .env.example .env`.
+The first design request downloads the inpainting model (a few GB) and loads it
+in the background; `/model-status` reports progress.
 
 ## Settings (.env)
-SECRET_KEY, GEMINI_API_KEY, GEMINI_MODEL, GEMINI_TIMEOUT. The default model is `gemini-3.5-flash-lite` (fast, ~2s); if it fails the app tries `gemini-3.5-flash` then `gemini-flash-latest`.
+
+Copy `.env.example` to `.env` and fill in your values. `.env` is gitignored; only
+the placeholder template is committed.
+
+- `SECRET_KEY` — Flask session secret; use a long random string.
+- `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_TIMEOUT` — nearby-shop suggestions. The default model is `gemini-3.5-flash-lite` (fast, ~2s); if it fails the app tries `gemini-3.5-flash` then `gemini-flash-latest`.
+- `SD_MODEL_ID`, `SD_DEVICE` — local inpainting, described below.
+- `REPLICATE_API_TOKEN` — optional, only used by the standalone `code1_api.py` example; the Flask app does not call Replicate.
 
 The local inpainting model is configured with SD_MODEL_ID (default `runwayml/stable-diffusion-inpainting`, a public repo — the old `stabilityai/stable-diffusion-2-inpainting` now returns 401) and SD_DEVICE (`auto`, `cuda` or `cpu`). It is downloaded on first use; startup does not block. Check `/model-status` to see whether it is loading, ready, or what error occurred. A failed load is retried on the next design request.
 
@@ -49,6 +71,19 @@ Admin list routes are role-protected; non-admins are redirected to their dashboa
 - Nine placement buttons (top/middle/bottom x left/centre/right). The chosen spot becomes the white inpainting mask, so only that area is edited.
 - Enter a city/area (or "Use my location") and Gemini suggests nearby stores for the item, shown on the result page with Google Maps links.
 - Old databases are upgraded automatically with the new columns.
+
+## Project layout
+
+- `app.py` — routes, role guards, Gemini integration and lazy AI model loading
+- `database.py` — SQLAlchemy models and automatic schema upgrades
+- `templates/`, `static/` — UI, styles and client-side placement (`static/JS/placement.js`)
+- `tests/` — smoke suite and Playwright browser/screenshot suite
+- `docs/screenshots/` — generated UI captures
+- `instance/interior_design.db` — local SQLite data, created automatically and not committed
+- `.env` / `.env.example` — local secrets / safe template
+
+Generated uploads (`uploads/`, `static/uploads/`) and Python caches are also
+gitignored.
 
 ## Testing
 
