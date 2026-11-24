@@ -13,6 +13,7 @@ import uuid
 from types import SimpleNamespace
 
 from PIL import Image
+from sqlalchemy import inspect
 
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -23,7 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 import app as web
-from database import db, User, Design
+from database import db, User, Design, upgrade_schema
 from masking import build_custom_mask, build_mask, parse_coords
 from prompt_builder import build_prompt
 
@@ -126,6 +127,19 @@ with web.app.app_context():
         db.session.flush()
         ids[role] = user.id
     db.session.commit()
+
+# --- schema upgrades are idempotent ---------------------------------------
+with web.app.app_context():
+    before_columns = [c['name'] for c in inspect(db.engine).get_columns('design')]
+    before_count = Design.query.count()
+    upgrade_schema()
+    upgrade_schema()
+    after_columns = [c['name'] for c in inspect(db.engine).get_columns('design')]
+    after_count = Design.query.count()
+check('upgrade_schema is idempotent',
+      before_columns == after_columns and before_count == after_count
+      and 'mask_coords' in after_columns,
+      (before_count, after_count, 'mask_coords' in after_columns))
 
 # --- prompt builder -------------------------------------------------------
 full = build_prompt('a walnut bookshelf', room_type='living_room', style='modern',
@@ -289,6 +303,8 @@ with web.app.app_context():
 check('custom design saved', res.status_code == 302 and bool(custom_design)
       and custom_design.position == 'custom',
       (res.status_code, custom_design.position if custom_design else None))
+stored_coords = custom_design.mask_coords if custom_design else None
+check('custom coords stored on design', stored_coords == '25,25,75,75', stored_coords)
 if custom_design:
     mask = Image.open(os.path.join(ROOT, 'static', 'uploads', 'mask',
                                    custom_design.mask_image))
@@ -312,6 +328,9 @@ check('invalid custom coords fall back to centre',
       res.status_code == 302 and bool(fallback_design)
       and fallback_design.position == 'middle_center',
       (res.status_code, fallback_design.position if fallback_design else None))
+check('invalid custom coords not stored',
+      bool(fallback_design) and not fallback_design.mask_coords,
+      fallback_design.mask_coords if fallback_design else None)
 if fallback_design:
     mask = Image.open(os.path.join(ROOT, 'static', 'uploads', 'mask',
                                    fallback_design.mask_image))

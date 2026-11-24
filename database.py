@@ -53,6 +53,8 @@ class Design(db.Model):
     output_image = db.Column(db.String(200), nullable=False)
     prompt = db.Column(db.String(500), nullable=False)
     position = db.Column(db.String(30), default='middle_center')
+    # Normalised custom mask coordinates, e.g. "25,25,75,75"; empty for zones.
+    mask_coords = db.Column(db.String(60), default='', server_default='')
     location = db.Column(db.String(200), default='')
     places_json = db.Column(db.Text, default='')
 
@@ -157,6 +159,7 @@ def upgrade_schema():
     design_columns = {c['name'] for c in inspector.get_columns('design')}
     wanted = {
         'position': "VARCHAR(30) DEFAULT 'middle_center'",
+        'mask_coords': "VARCHAR(60) DEFAULT ''",
         'location': "VARCHAR(200) DEFAULT ''",
         'places_json': "TEXT DEFAULT ''",
         'room_type': "VARCHAR(60) DEFAULT ''",

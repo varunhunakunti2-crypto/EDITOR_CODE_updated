@@ -151,12 +151,25 @@ def main():
     check("customer can open my enquiries", request(cust_f, "/my/enquiries")[0] == 200)
     check("designer can open my enquiries", request(design_f, "/my/enquiries")[0] == 200)
 
-    # --- Analysis API (Step 2/3) -----------------------------------------
+    # --- Schema and legacy designs ----------------------------------------
     with sqlite3.connect(DB) as con:
         columns = [row[1] for row in con.execute("PRAGMA table_info(design)")]
+        legacy_ids = [row[0] for row in con.execute(
+            "SELECT id FROM design ORDER BY id LIMIT 8")]
+        blank_coords = con.execute(
+            "SELECT COUNT(*) FROM design WHERE id <= 8 "
+            "AND (mask_coords IS NULL OR mask_coords = '')").fetchone()[0] if legacy_ids else 0
     check("design schema has new fields", all(name in columns for name in
           ["room_type", "style", "budget", "preferences", "width_m",
-           "length_m", "height_m", "detection_notes", "placement_json"]))
+           "length_m", "height_m", "detection_notes", "placement_json",
+           "mask_coords"]))
+    check("old 8 designs still open", len(legacy_ids) == 8 and all(
+          request(admin_f, f"/design/{design_id}")[0] == 200 for design_id in legacy_ids),
+          legacy_ids)
+    check("old designs keep blank mask coords", blank_coords == len(legacy_ids),
+          blank_coords)
+
+    # --- Analysis API (Step 2/3) -----------------------------------------
 
     photo = open("sample.jpg", "rb").read()
     body, ctype = multipart({"reference_pixels": "180"}, "room.jpg", photo)

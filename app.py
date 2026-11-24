@@ -862,9 +862,12 @@ def design():
         position = ('whole_room' if whole_room else
                     masking.normalize_position(request.form.get('position')))
         custom_coords = masking.parse_coords(request.form.get('coords'))
+        mask_coords = ''
         if position == 'custom' and custom_coords is None:
             flash('Custom area was invalid; using the centre zone instead.', 'info')
             position = masking.DEFAULT_POSITION
+        if position == 'custom':
+            mask_coords = ','.join(f'{part * 100:g}' for part in custom_coords)
         location = request.form.get('location', '').strip()[:200]
 
         room_type = request.form.get('room_type', '').strip().lower()
@@ -967,6 +970,7 @@ def design():
                     output_image=output_filename,
                     prompt=prompt,
                     position=position,
+                    mask_coords=mask_coords,
                     location=location,
                     places_json=json.dumps(nearby),
                     room_type=room_type,
