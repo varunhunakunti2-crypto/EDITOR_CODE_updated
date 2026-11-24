@@ -113,6 +113,13 @@
           </label>
           {% endfor %}
         </div>
+        <div class="field" id="customCoords" hidden>
+          <label for="coords">Custom area (x1,y1,x2,y2)</label>
+          <input class="input" type="text" id="coords" name="coords" maxlength="60"
+                 inputmode="decimal" placeholder="e.g. 25,25,75,75">
+          <p class="hint">Four percentages from 0 to 100, left/top then right/bottom.
+            The box must cover 1–85% of the photo; invalid values use the centre zone.</p>
+        </div>
         </div>
       </section>
 
@@ -191,18 +198,49 @@
 
   // ---- Placement positions (kept in sync with masking.py) ----
   const IMG = 512, ZW = 150, ZH = 130, M = 26;
+  const MIN_AREA = 1, MAX_AREA = 85;   // percent of the image; see masking.py
   const zone = document.getElementById('zone');
+  const coordsInput = document.getElementById('coords');
+  const customRow = document.getElementById('customCoords');
   const axis = (i, len) => i === 0 ? M : (i === 1 ? (IMG - len) / 2 : IMG - M - len);
   const COLS = {left:0, center:1, right:2}, ROWS = {top:0, middle:1, bottom:2};
+
+  function setZone(left, top, width, height, flip){
+    zone.style.left = left + '%';
+    zone.style.top = top + '%';
+    zone.style.width = width + '%';
+    zone.style.height = height + '%';
+    zone.classList.toggle('flip', !!flip);  // keep the label inside the photo
+  }
+  function parseCustom(text){
+    if(!text) return null;
+    const parts = text.split(',').map(p => p.trim());
+    if(parts.length !== 4 || parts.some(p => !p)) return null;
+    const v = parts.map(Number);
+    if(v.some(n => !Number.isFinite(n) || n < 0 || n > 100)) return null;
+    const [x1, y1, x2, y2] = v;
+    if(x2 <= x1 || y2 <= y1) return null;
+    const area = (x2 - x1) * (y2 - y1) / 100;
+    if(area < MIN_AREA || area > MAX_AREA) return null;
+    return v;
+  }
   function placeZone(value){
+    customRow.hidden = value !== 'custom';
+    if(value === 'custom'){
+      const c = parseCustom(coordsInput.value);
+      if(c){ setZone(c[0], c[1], c[2] - c[0], c[3] - c[1], false); return; }
+      value = 'middle_center';
+    }
+    if(value === 'whole_room') value = 'middle_center';
     const [row, col] = value.split('_');
     const x = axis(COLS[col], ZW), y = axis(ROWS[row], ZH);
-    zone.style.left = (100 * x / IMG) + '%';
-    zone.style.top = (100 * y / IMG) + '%';
-    zone.style.width = (100 * ZW / IMG) + '%';
-    zone.style.height = (100 * ZH / IMG) + '%';
-    zone.classList.toggle('flip', row === 'bottom');  // keep the label inside the photo
+    setZone(100 * x / IMG, 100 * y / IMG, 100 * ZW / IMG, 100 * ZH / IMG,
+            row === 'bottom');
   }
+  coordsInput.addEventListener('input', () => {
+    if(document.querySelector('input[name=position]:checked').value === 'custom')
+      placeZone('custom');
+  });
   document.querySelectorAll('input[name=position]').forEach(r => {
     r.addEventListener('change', () => placeZone(r.value));
     if (r.checked) placeZone(r.value);

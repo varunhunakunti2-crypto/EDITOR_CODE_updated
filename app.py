@@ -861,6 +861,10 @@ def design():
         whole_room = request.form.get('mode') == 'whole'
         position = ('whole_room' if whole_room else
                     masking.normalize_position(request.form.get('position')))
+        custom_coords = masking.parse_coords(request.form.get('coords'))
+        if position == 'custom' and custom_coords is None:
+            flash('Custom area was invalid; using the centre zone instead.', 'info')
+            position = masking.DEFAULT_POSITION
         location = request.form.get('location', '').strip()[:200]
 
         room_type = request.form.get('room_type', '').strip().lower()
@@ -896,9 +900,13 @@ def design():
                 # Load input image
                 init_image = Image.open(input_path).convert("RGB").resize((512, 512))
                 
-                # One zone for an item, or a fully white mask for a whole-room redesign.
-                mask_image = (masking.build_full_mask(init_image.size) if whole_room
-                              else masking.build_mask(position, init_image.size))
+                # One zone, a validated custom box, or a fully white mask.
+                if whole_room:
+                    mask_image = masking.build_full_mask(init_image.size)
+                elif position == 'custom':
+                    mask_image = masking.build_custom_mask(custom_coords, init_image.size)
+                else:
+                    mask_image = masking.build_mask(position, init_image.size)
 
                 # Save mask
                 mask_filename = f"mask_{filename}"

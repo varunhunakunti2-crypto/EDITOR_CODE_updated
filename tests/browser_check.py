@@ -180,6 +180,13 @@ def pdf_walkthrough(page, demo, role, username, capture=False):
     page.wait_for_load_state("networkidle")
     check(tag + " 2 upload form", page.locator("input[type=file][name=image]").count() == 1
           and page.locator("#prompt").count() == 1)
+    if role == "customer":
+        page.locator('input[name=position][value=custom]').check()
+        check(tag + " 2 custom area control", page.locator("#customCoords").is_visible())
+        page.fill("#coords", "25,25,75,75")
+        check(tag + " 2 custom preview",
+              page.locator("#zone").evaluate("el => el.style.width") == "50%")
+        page.locator('input[name=position][value=middle_center]').check()
     if capture:
         shot(page, "19-step2-upload")
 

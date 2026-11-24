@@ -20,7 +20,7 @@ steps, all implemented here:
 | 1 | **User Login** — Customer / Interior Designer / Shop Owner / Admin | Sign up with one of the three selectable roles; the first account becomes Admin. Each role lands on its own dashboard. |
 | 2 | **Upload Room Image** — bedroom, kitchen, living room or another space | `/design` accepts a PNG/JPG/JPEG room photo plus a typed (or spoken) prompt. |
 | 3 | **AI Room Detection and Measurement** — CV identifies walls, corners and boundaries and estimates dimensions using a reference | **Analyze room** calls `/api/analyze-room`; OpenCV returns width/length/height, confidence and an annotated overlay; the inputs stay editable. |
-| 4 | **AI Interior Design Generation** — use preferences, room dimensions, budget and selected style | The form records room type, style, budget, preferences, dimensions and mode (one zone or whole room); `prompt_builder.py` builds the generation prompt and local Stable Diffusion inpainting produces the preview. |
+| 4 | **AI Interior Design Generation** — use preferences, room dimensions, budget and selected style | The form records room type, style, budget, preferences, dimensions and mode (one zone, a custom rectangle or whole room); `prompt_builder.py` builds the generation prompt and local Stable Diffusion inpainting produces the preview. |
 | 5 | **Interactive Drag-and-Drop Furniture** — move, rotate, resize and rearrange products from registered shops | The result page palette shows verified products; items can be dragged, moved, resized and rotated, then saved to the design and exported as a PNG. |
 | 6 | **Product Details and Shop Connection** — prices, dimensions, descriptions, shop details and contact/enquire | `/products` and `/products/<id>` show verified shop identity and contact details; the **Ask shop owner** form creates an in-app enquiry; `/my/enquiries` tracks its status. |
 
@@ -118,6 +118,10 @@ inpainting; the original prompt stays in the database row and the result page
 shows the room summary. Two edit modes are supported:
 
 - **Add one item in a zone** — the existing nine-zone mask
+- **Custom area** — `Custom area` plus four percentages `x1,y1,x2,y2` (0–100)
+  draws a white box on the black mask. The box must cover 1–85% of the image;
+  missing, reversed, out-of-bounds or otherwise invalid coordinates safely fall
+  back to the centre zone.
 - **Redesign the whole room** — a fully white mask (`whole_room` position)
 
 Furniture arrangements are saved with `POST /design/<id>/placement` (JSON with
@@ -168,7 +172,8 @@ Admin routes are role-protected; non-admins are redirected to their dashboard.
   default, editable overrides, annotated overlay and a confidence note.
 - **Room-aware generation** — room type, style, budget, preferences and measured
   dimensions are combined with the user's prompt; the original prompt is kept in
-  the database. Nine-zone masks or a whole-room redesign are supported.
+  the database. Nine-zone masks, validated custom rectangles or a whole-room
+  redesign are supported.
 - **Furniture placement** — verified products, custom images, drag/move/resize,
   ↺/↻ or Shift+wheel rotation, save/reload persistence and rotated PNG download.
 - **Shop connection** — verified shop identity and contact details, product
@@ -225,9 +230,9 @@ gitignored.
 Start the app first (`python app.py`), then run the suites from the project folder:
 
     python tests/smoke_test.py       # 163 HTTP/DB checks, standard library only
-    python tests/browser_check.py    # 48 real-browser checks + 26 screenshots
+    python tests/browser_check.py    # 50 real-browser checks + 26 screenshots
     python tests/room_analysis_check.py  # OpenCV measurement checks, no server needed
-    python tests/backend_check.py    # in-process API/DB checks, stubbed AI, no server needed
+    python tests/backend_check.py    # 43 in-process API/DB checks, stubbed AI, no server needed
     python tests/flow_check.py       # full analyze -> design -> result flow in a browser
     python tests/shop_flow_check.py  # shop register -> verify -> catalogue/edit/enquiry flow
     python tests/admin_check.py      # verification, moderation and report counts, no server needed
@@ -243,13 +248,16 @@ screen, exercise drag-and-drop placement, check for console errors and failed
 requests, and regenerate the screenshots below. It also walks through all six
 steps of the project PDF (login, room upload, CV measurement, design generation,
 interactive furniture with rotation, and product/shop connection) as each of the
-four roles, with a screenshot for every customer step and one per other role.
+four roles, checks the custom-area control and live preview, and writes a
+screenshot for every customer step plus one per other role.
 `room_analysis_check.py` generates three
 synthetic rooms with known dimensions, checks the measured size, overlays and
 manual overrides, and also analyses any uploaded room photos.
 `backend_check.py` posts a design with every new field, verifies the DB row and
-result page, checks the whole-room mask, and exercises placement guards with a
-stubbed pipeline (no diffusion or API keys needed). `flow_check.py` drives the
+result page, checks the whole-room mask, validates custom coordinates (missing,
+too small, out of bounds and reversed), confirms the custom mask and its
+fallback, and exercises placement guards with a stubbed pipeline (no diffusion
+or API keys needed). `flow_check.py` drives the
 whole room-analysis → design → result journey in Chromium with real inpainting
 (slower, ~1 minute), then removes its demo account and design. `shop_flow_check.py`
 covers the full shop journey in Chromium without diffusion (fast): shop registration,
@@ -274,8 +282,10 @@ Verified with the app running at `http://localhost:5000` and the local inpaintin
 model loaded (`/model-status` reports `runwayml/stable-diffusion-inpainting`):
 
 - `python tests/smoke_test.py` — **163 passed, 0 failed**.
-- `python tests/browser_check.py` — **48 passed, 0 failed**, with zero browser
+- `python tests/browser_check.py` — **50 passed, 0 failed**, with zero browser
   console errors and zero failed requests.
+- `python tests/backend_check.py` — **43 passed, 0 failed**, including custom
+  coordinate validation and fallback.
 - Manual six-step click-through in a real browser as a customer: register/login →
   upload a room photo → **Analyze room** (overlay plus editable 6.16 × 8.01 × 2.8 m
   estimate) → generate a design → add, rotate, save and reload furniture → open

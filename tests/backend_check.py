@@ -24,6 +24,7 @@ sys.path.insert(0, ROOT)
 
 import app as web
 from database import db, User, Design
+from masking import build_custom_mask, build_mask, parse_coords
 from prompt_builder import build_prompt
 
 PASS, FAIL = [], []
@@ -67,6 +68,23 @@ suffix = uuid.uuid4().hex[:8]
 created_usernames = []
 
 FOLDERS = ('input', 'mask', 'output')
+
+
+def white_box_ok(mask, box):
+    """Check a mask saved as JPEG without depending on compression edges."""
+    gray = mask.convert('L')
+    width, height = gray.size
+    x1, y1, x2, y2 = box
+    mx, my = (x1 + x2) // 2, (y1 + y2) // 2
+    probes = [
+        ((mx, my), True),
+        ((max(0, x1 - 6), my), False),
+        ((min(width - 1, x2 + 6), my), False),
+        ((mx, max(0, y1 - 6)), False),
+        ((mx, min(height - 1, y2 + 6)), False),
+    ]
+    return all((gray.getpixel(point) >= 180) == wanted
+               for point, wanted in probes)
 
 
 def cleanup():
@@ -125,6 +143,32 @@ try:
 except ValueError:
     check('empty prompt rejected', True)
 
+# --- custom mask helpers ---------------------------------------------------
+check('custom position is registered',
+      'custom' in web.masking.POSITIONS and
+      web.masking.normalize_position(' CUSTOM ') == 'custom' and
+      web.masking.LABELS['custom'] == 'Custom area')
+check('valid coords parse to fractions',
+      parse_coords(' 25, 25, 75, 75 ') == (0.25, 0.25, 0.75, 0.75),
+      parse_coords(' 25, 25, 75, 75 '))
+check('parsed tuple is accepted again',
+      parse_coords(parse_coords('25,25,75,75')) == (0.25, 0.25, 0.75, 0.75))
+for label, value in [
+    ('missing', None), ('empty', ''), ('partial', '25,25,75'),
+    ('non numeric', 'a,25,75,75'), ('out of bounds', '-1,25,75,75'),
+    ('above bounds', '25,25,175,75'), ('reversed', '75,25,25,75'),
+    ('too small', '10,10,15,15'), ('too large', '2,2,98,98'),
+]:
+    check('coords rejected: ' + label, parse_coords(value) is None, value)
+
+custom_mask = build_custom_mask('25,25,75,75', (512, 512))
+check('custom mask has white box at coords',
+      custom_mask.convert('L').getbbox() == (128, 128, 384, 384),
+      custom_mask.convert('L').getbbox())
+fallback = build_custom_mask('10,10,15,15', (512, 512))
+check('invalid custom mask falls back to centre',
+      fallback.tobytes() == build_mask('middle_center', (512, 512)).tobytes())
+
 # --- /api/analyze-room ----------------------------------------------------
 anon = web.app.test_client()
 check('analyze-room requires login',
@@ -166,7 +210,8 @@ check('design form exposes new fields', res.status_code == 200 and all(
     text in html for text in ('name="room_type"', 'name="style"', 'name="budget"',
                               'name="preferences"', 'name="width_m"', 'name="length_m"',
                               'name="height_m"', 'name="detection_notes"',
-                              'value="whole"', 'api/analyze-room')))
+                              'value="whole"', 'value="custom"', 'Custom area',
+                               'name="coords"', 'api/analyze-room')))
 
 res = client.post('/design', data={
     'image': (io.BytesIO(IMAGE), 'room.jpg'),
@@ -227,6 +272,52 @@ if mask_name:
     check('whole-room mask is fully white',
           all(ext[0] == ext[1] == 255 for ext in mask.getextrema()),
           mask.getextrema())
+
+# --- custom area design ---------------------------------------------------
+res = client.post('/design', data={
+    'image': (io.BytesIO(IMAGE), 'custom.jpg'),
+    'prompt': 'a custom area bookshelf', 'position': 'custom',
+    'coords': '25,25,75,75', 'mode': 'zone',
+}, content_type='multipart/form-data')
+with web.app.app_context():
+    custom_design = Design.query.filter_by(prompt='a custom area bookshelf').order_by(
+        Design.id.desc()).first()
+    DESIGN_IDS.append(custom_design.id if custom_design else None)
+    if custom_design:
+        DESIGN_FILES.append((custom_design.input_image, custom_design.mask_image,
+                             custom_design.output_image))
+check('custom design saved', res.status_code == 302 and bool(custom_design)
+      and custom_design.position == 'custom',
+      (res.status_code, custom_design.position if custom_design else None))
+if custom_design:
+    mask = Image.open(os.path.join(ROOT, 'static', 'uploads', 'mask',
+                                   custom_design.mask_image))
+    check('custom design mask matches coords', white_box_ok(mask, (128, 128, 383, 383)))
+    html = client.get('/design/%d' % custom_design.id).get_data(as_text=True)
+    check('result page labels custom area', 'custom area' in html.lower())
+
+res = client.post('/design', data={
+    'image': (io.BytesIO(IMAGE), 'fallback.jpg'),
+    'prompt': 'a fallback bookshelf', 'position': 'custom',
+    'coords': '10,10,15,15', 'mode': 'zone',
+}, content_type='multipart/form-data')
+with web.app.app_context():
+    fallback_design = Design.query.filter_by(prompt='a fallback bookshelf').order_by(
+        Design.id.desc()).first()
+    DESIGN_IDS.append(fallback_design.id if fallback_design else None)
+    if fallback_design:
+        DESIGN_FILES.append((fallback_design.input_image, fallback_design.mask_image,
+                             fallback_design.output_image))
+check('invalid custom coords fall back to centre',
+      res.status_code == 302 and bool(fallback_design)
+      and fallback_design.position == 'middle_center',
+      (res.status_code, fallback_design.position if fallback_design else None))
+if fallback_design:
+    mask = Image.open(os.path.join(ROOT, 'static', 'uploads', 'mask',
+                                   fallback_design.mask_image))
+    expected_box = web.masking.mask_box('middle_center', 512)
+    check('fallback mask is centre zone', white_box_ok(mask, expected_box),
+          expected_box)
 
 # --- /design/<id>/placement ----------------------------------------------
 url = '/design/%d/placement' % d.id
