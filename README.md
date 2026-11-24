@@ -59,6 +59,21 @@ The result page (`/design/<id>`) has a "Place furniture" panel:
 
 Placement is a client-side preview — it is not saved to the design record.
 
+## Room measurement (OpenCV)
+`room_analysis.py` measures a room from one photo with Canny edges + Hough
+lines, converts pixels to metres using a known reference (a 2 m door by
+default), writes an annotated overlay and returns width × length × height with
+a confidence note. Length/depth is a proportion-based estimate — supply a
+manual override when it matters:
+
+    python room_analysis.py room.jpg --reference-pixels 180
+    python room_analysis.py room.jpg --width 5.5 --length 6 --height 2.8
+
+Python API: `analyze_room(path, reference_length_m=2, reference_pixels=180,
+manual={'length_m': 6})`. The result includes `width_m`, `length_m`,
+`height_m`, `confidence`, `note`, `reference`, detected corners and an
+`overlay_path` under `static/uploads/analysis/`.
+
 ## Admin lists and product details
 - `/admin/users` — full user list with roles, design/product counts and shop links
 - `/admin/shops` — shop owners with product/in-stock counts; `/admin/shops/<owner_id>` opens one shop's catalogue
@@ -76,6 +91,7 @@ Admin list routes are role-protected; non-admins are redirected to their dashboa
 
 - `app.py` — routes, role guards, Gemini integration and lazy AI model loading
 - `database.py` — SQLAlchemy models and automatic schema upgrades
+- `room_analysis.py` — OpenCV room measurement and annotated overlays
 - `templates/`, `static/` — UI, styles and client-side placement (`static/JS/placement.js`)
 - `tests/` — smoke suite and Playwright browser/screenshot suite
 - `docs/screenshots/` — generated UI captures
@@ -91,12 +107,15 @@ Start the app first (`python app.py`), then run the suites from the project fold
 
     python tests/smoke_test.py       # 41 HTTP/DB checks, standard library only
     python tests/browser_check.py    # 12 real-browser checks + screenshot generator
+    python tests/room_analysis_check.py  # OpenCV measurement checks, no server needed
 
 `smoke_test.py` verifies public pages, role-based redirects and guards for all four
 roles, product upload/list/detail/delete, catalogue access, admin lists and file
 cleanup. `browser_check.py` uses Playwright + Chromium to render every screen,
 exercise drag-and-drop placement, check for console errors and failed requests,
-and regenerate the screenshots below.
+and regenerate the screenshots below. `room_analysis_check.py` generates three
+synthetic rooms with known dimensions, checks the measured size, overlays and
+manual overrides, and also analyses any uploaded room photos.
 
     pip install playwright && python -m playwright install chromium
 

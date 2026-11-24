@@ -2,6 +2,7 @@ flask
 flask-login
 flask-sqlalchemy
 pillow
+opencv-python-headless
 torch
 diffusers
 transformers
