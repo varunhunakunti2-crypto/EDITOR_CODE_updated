@@ -861,7 +861,9 @@ def design():
         whole_room = request.form.get('mode') == 'whole'
         position = ('whole_room' if whole_room else
                     masking.normalize_position(request.form.get('position')))
-        custom_coords = masking.parse_coords(request.form.get('coords'))
+        # ``coords`` is kept as a fallback for older form posts.
+        custom_coords = masking.parse_coords(
+            request.form.get('mask_coords') or request.form.get('coords'))
         mask_coords = ''
         if position == 'custom' and custom_coords is None:
             flash('Custom area was invalid; using the centre zone instead.', 'info')
@@ -911,8 +913,8 @@ def design():
                 else:
                     mask_image = masking.build_mask(position, init_image.size)
 
-                # Save mask
-                mask_filename = f"mask_{filename}"
+                # Save the binary mask as PNG so the white box stays exact.
+                mask_filename = "mask_" + os.path.splitext(filename)[0] + ".png"
                 mask_path = os.path.join(app.config['UPLOAD_FOLDER'], 'mask', mask_filename)
                 mask_image.save(mask_path)
                 

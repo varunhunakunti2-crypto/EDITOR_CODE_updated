@@ -114,8 +114,8 @@
           {% endfor %}
         </div>
         <div class="field" id="customCoords" hidden>
-          <label for="coords">Custom area (x1,y1,x2,y2)</label>
-          <input class="input" type="text" id="coords" name="coords" maxlength="60"
+          <label for="mask_coords">Custom area (x1,y1,x2,y2)</label>
+          <input class="input" type="text" id="mask_coords" name="mask_coords" maxlength="60"
                  inputmode="decimal" placeholder="e.g. 25,25,75,75">
           <p class="hint">Four percentages from 0 to 100, left/top then right/bottom.
             The box must cover 1–85% of the photo; invalid values use the centre zone.</p>
@@ -200,7 +200,7 @@
   const IMG = 512, ZW = 150, ZH = 130, M = 26;
   const MIN_AREA = 1, MAX_AREA = 85;   // percent of the image; see masking.py
   const zone = document.getElementById('zone');
-  const coordsInput = document.getElementById('coords');
+  const coordsInput = document.getElementById('mask_coords');
   const customRow = document.getElementById('customCoords');
   const axis = (i, len) => i === 0 ? M : (i === 1 ? (IMG - len) / 2 : IMG - M - len);
   const COLS = {left:0, center:1, right:2}, ROWS = {top:0, middle:1, bottom:2};

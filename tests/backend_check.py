@@ -71,21 +71,23 @@ created_usernames = []
 FOLDERS = ('input', 'mask', 'output')
 
 
-def white_box_ok(mask, box):
-    """Check a mask saved as JPEG without depending on compression edges."""
+def mask_is_exact(mask, box):
+    """Check a PNG mask: white only inside ``box`` (inclusive), black outside."""
+    if mask.format != 'PNG':
+        return False
     gray = mask.convert('L')
+    pixels = gray.load()
     width, height = gray.size
     x1, y1, x2, y2 = box
-    mx, my = (x1 + x2) // 2, (y1 + y2) // 2
-    probes = [
-        ((mx, my), True),
-        ((max(0, x1 - 6), my), False),
-        ((min(width - 1, x2 + 6), my), False),
-        ((mx, max(0, y1 - 6)), False),
-        ((mx, min(height - 1, y2 + 6)), False),
-    ]
-    return all((gray.getpixel(point) >= 180) == wanted
-               for point, wanted in probes)
+    for y in range(height):
+        for x in range(width):
+            inside = x1 <= x <= x2 and y1 <= y <= y2
+            value = pixels[x, y]
+            if inside and value < 250:
+                return False
+            if not inside and value > 5:
+                return False
+    return True
 
 
 def cleanup():
@@ -225,7 +227,7 @@ check('design form exposes new fields', res.status_code == 200 and all(
                               'name="preferences"', 'name="width_m"', 'name="length_m"',
                               'name="height_m"', 'name="detection_notes"',
                               'value="whole"', 'value="custom"', 'Custom area',
-                               'name="coords"', 'api/analyze-room')))
+                               'name="mask_coords"', 'api/analyze-room')))
 
 res = client.post('/design', data={
     'image': (io.BytesIO(IMAGE), 'room.jpg'),
@@ -291,7 +293,7 @@ if mask_name:
 res = client.post('/design', data={
     'image': (io.BytesIO(IMAGE), 'custom.jpg'),
     'prompt': 'a custom area bookshelf', 'position': 'custom',
-    'coords': '25,25,75,75', 'mode': 'zone',
+    'mask_coords':'25,25,75,75', 'mode': 'zone',
 }, content_type='multipart/form-data')
 with web.app.app_context():
     custom_design = Design.query.filter_by(prompt='a custom area bookshelf').order_by(
@@ -308,14 +310,15 @@ check('custom coords stored on design', stored_coords == '25,25,75,75', stored_c
 if custom_design:
     mask = Image.open(os.path.join(ROOT, 'static', 'uploads', 'mask',
                                    custom_design.mask_image))
-    check('custom design mask matches coords', white_box_ok(mask, (128, 128, 383, 383)))
+    check('custom design mask PNG has white box only at coords',
+          mask_is_exact(mask, (128, 128, 383, 383)))
     html = client.get('/design/%d' % custom_design.id).get_data(as_text=True)
     check('result page labels custom area', 'custom area' in html.lower())
 
 res = client.post('/design', data={
     'image': (io.BytesIO(IMAGE), 'fallback.jpg'),
     'prompt': 'a fallback bookshelf', 'position': 'custom',
-    'coords': '10,10,15,15', 'mode': 'zone',
+    'mask_coords':'10,10,15,15', 'mode': 'zone',
 }, content_type='multipart/form-data')
 with web.app.app_context():
     fallback_design = Design.query.filter_by(prompt='a fallback bookshelf').order_by(
@@ -335,8 +338,32 @@ if fallback_design:
     mask = Image.open(os.path.join(ROOT, 'static', 'uploads', 'mask',
                                    fallback_design.mask_image))
     expected_box = web.masking.mask_box('middle_center', 512)
-    check('fallback mask is centre zone', white_box_ok(mask, expected_box),
+    check('fallback mask PNG is centre zone only', mask_is_exact(mask, expected_box),
           expected_box)
+
+# --- ordinary zones still use the original nine-zone mask -------------------
+res = client.post('/design', data={
+    'image': (io.BytesIO(IMAGE), 'zone.jpg'),
+    'prompt': 'a walnut shelf in the corner', 'position': 'top_left',
+    'mask_coords': '25,25,75,75', 'mode': 'zone',
+}, content_type='multipart/form-data')
+with web.app.app_context():
+    zone_design = Design.query.filter_by(
+        prompt='a walnut shelf in the corner').order_by(Design.id.desc()).first()
+    DESIGN_IDS.append(zone_design.id if zone_design else None)
+    if zone_design:
+        DESIGN_FILES.append((zone_design.input_image, zone_design.mask_image,
+                             zone_design.output_image))
+check('zone design ignores stray custom coords',
+      res.status_code == 302 and bool(zone_design)
+      and zone_design.position == 'top_left' and not zone_design.mask_coords,
+      (res.status_code, zone_design.position if zone_design else None,
+       zone_design.mask_coords if zone_design else None))
+if zone_design:
+    mask = Image.open(os.path.join(ROOT, 'static', 'uploads', 'mask',
+                                   zone_design.mask_image))
+    check('zone mask PNG matches original top-left box',
+          mask_is_exact(mask, web.masking.mask_box('top_left', 512)))
 
 # --- /design/<id>/placement ----------------------------------------------
 url = '/design/%d/placement' % d.id

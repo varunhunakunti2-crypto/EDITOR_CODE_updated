@@ -183,7 +183,7 @@ def pdf_walkthrough(page, demo, role, username, capture=False):
     if role == "customer":
         page.locator('input[name=position][value=custom]').check()
         check(tag + " 2 custom area control", page.locator("#customCoords").is_visible())
-        page.fill("#coords", "25,25,75,75")
+        page.fill("#mask_coords", "25,25,75,75")
         check(tag + " 2 custom preview",
               page.locator("#zone").evaluate("el => el.style.width") == "50%")
         page.locator('input[name=position][value=middle_center]').check()
