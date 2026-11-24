@@ -11,6 +11,28 @@
     <a href="{{ url_for('admin_shops') }}" class="btn btn-ghost btn-lg">{{ icon('store') }} All shops</a>
   </div>
 
+  <section class="panel">
+    <h2>Verification</h2>
+    {% if profile %}
+    <p>Submitted {{ profile.submitted_at|date }} ·
+      {% if profile.verified %}<span class="role-badge">Verified — products are public</span>
+      {% else %}<span class="role-badge">Pending — products are hidden</span>{% endif %}
+    </p>
+    <dl class="details">
+      <div><dt>Shop name</dt><dd>{{ profile.shop_name }}</dd></div>
+      <div><dt>City</dt><dd>{{ profile.city or '—' }}</dd></div>
+      <div><dt>Address</dt><dd>{{ profile.address or '—' }}</dd></div>
+      <div><dt>Phone</dt><dd>{{ profile.phone or '—' }}</dd></div>
+    </dl>
+    {% else %}
+    <p class="sub">This owner has not submitted a shop profile yet. Verification will approve a placeholder profile.</p>
+    {% endif %}
+    <form method="POST" action="{{ url_for('admin_shop_verify', owner_id=owner.id) }}" style="margin-top:1rem">
+      <input type="hidden" name="verified" value="{{ '0' if profile and profile.verified else '1' }}">
+      <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Revoke verification' if profile and profile.verified else 'Verify shop' }}</button>
+    </form>
+  </section>
+
   <div class="stats">
     <div class="stat"><b>{{ products|length }}</b><span>Products</span></div>
     <div class="stat"><b>{{ products|selectattr('availability', 'equalto', 'in_stock')|list|length }}</b><span>In stock</span></div>

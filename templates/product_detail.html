@@ -31,6 +31,35 @@
         {% endif %}
       </dl>
 
+      {% if not current_user.is_admin and current_user.id != product.owner_id %}
+      <section class="enquiry-form" style="margin-top:1.5rem">
+        <h2>Contact this shop</h2>
+        <form method="POST" action="{{ url_for('product_enquire', product_id=product.id) }}">
+          <div class="field-row">
+            <label><input type="radio" name="kind" value="enquiry" checked> Enquiry</label>
+            <label><input type="radio" name="kind" value="order"> Order</label>
+          </div>
+          {% if designs %}
+          <div class="field">
+            <label for="design_id">Related design (optional)</label>
+            <select class="input" id="design_id" name="design_id">
+              <option value="">None</option>
+              {% for d in designs %}
+              <option value="{{ d.id }}">{{ d.prompt[:60] }} · {{ d.created_at|date }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endif %}
+          <div class="field">
+            <label for="message">Message</label>
+            <textarea class="textarea" id="message" name="message" rows="3" maxlength="1000" required
+                      placeholder="Ask about size, colour, price or availability."></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block" style="margin-top:.8rem">{{ icon('arrow') }} Send to shop</button>
+        </form>
+      </section>
+      {% endif %}
+
       <div class="head-actions" style="margin-top:1.5rem">
         <a href="{{ url_for('result', design_id=latest_design.id) if latest_design else url_for('design') }}"
            class="btn btn-primary btn-lg">{{ icon('wand') }} Place in my design</a>

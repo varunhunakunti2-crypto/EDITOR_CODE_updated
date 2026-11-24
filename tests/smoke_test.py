@@ -114,6 +114,20 @@ def main():
         con.execute("UPDATE user SET role='admin' WHERE id=?", (admin_id,))
     post(admin_s, "/login", {"username": admin_u, "password": "pass123"})
 
+    # --- Shop registration / verification ---------------------------------
+    st, _, html = request(shop_f, "/shop/profile")
+    check("shop profile form", st == 200 and "shop_name" in html)
+    st, loc, _ = post(shop_s, "/shop/profile", {
+        "shop_name": "Smoke Interiors", "city": "Bengaluru",
+        "address": "1 Test Street", "phone": "9876543210"})
+    check("shop profile submitted", st == 302 and loc.endswith("/shop"), (st, loc))
+    with sqlite3.connect(DB) as con:
+        verified = con.execute("SELECT verified FROM shop_profile WHERE owner_id=?",
+                               (shop_id,)).fetchone()
+    check("new shop starts pending", verified and verified[0] == 0, verified)
+    st, _, html = request(shop_f, "/shop")
+    check("dashboard shows pending shop", "Pending verification" in html)
+
     for label, op, expected in [("admin", admin_s, "/admin"),
                                 ("shop owner", shop_s, "/shop"),
                                 ("customer", cust_s, "/dashboard"),
@@ -149,13 +163,61 @@ def main():
     check("owner product list", st == 200 and "Smoke Test Lamp" in html and "/products/" + str(pid) in html)
     st, _, html = request(shop_f, "/products/" + str(pid))
     check("owner product detail", st == 200 and "Manage catalogue" in html and "1234.50" in html)
+    st, _, html = request(cust_f, "/products")
+    check("pending shop product hidden", st == 200 and "Smoke Test Lamp" not in html)
+    check("pending product detail 404", request(cust_s, f"/products/{pid}")[0] == 404)
     st, _, html = request(admin_f, "/admin/shops/" + str(shop_id))
     check("admin shop catalogue", st == 200 and "Smoke Test Lamp" in html)
+
+    st, loc, _ = post(admin_s, f"/admin/shops/{shop_id}/verify", {"verified": "1"})
+    check("admin verifies shop", st == 302 and loc.endswith(f"/admin/shops/{shop_id}"), (st, loc))
+    with sqlite3.connect(DB) as con:
+        verified = con.execute("SELECT verified FROM shop_profile WHERE owner_id=?",
+                               (shop_id,)).fetchone()
+    check("shop now verified", verified and verified[0] == 1, verified)
     st, _, html = request(cust_f, "/products")
     check("public catalogue", st == 200 and "Smoke Test Lamp" in html)
     st, _, html = request(cust_f, "/products/" + str(pid))
     check("public product detail", st == 200 and "30 x 30 x 140 cm" in html and "Place in my design" in html)
     check("unknown product 404", request(cust_s, "/products/999999")[0] == 404)
+
+    # --- Product editing, availability and enquiries ----------------------
+    st, _, html = request(shop_f, f"/shop/products/{pid}/edit")
+    check("edit form prefilled", st == 200 and "Smoke Test Lamp" in html and "1234.50" in html)
+    st, loc, _ = post(shop_s, f"/shop/products/{pid}/edit", {
+        "name": "Smoke Test Lamp", "category": "Lighting", "price": "1500.00",
+        "dimensions": "30 x 30 x 140 cm", "description": "Updated description.",
+        "availability": "made_to_order"})
+    check("product edit saved", st == 302 and loc.endswith("/shop/products"), (st, loc))
+    with sqlite3.connect(DB) as con:
+        row = con.execute("SELECT price, description, availability FROM product WHERE id=?",
+                          (pid,)).fetchone()
+    check("product fields updated",
+          row == (1500.0, "Updated description.", "made_to_order"), row)
+
+    st, loc, _ = post(shop_s, f"/shop/products/{pid}/availability",
+                      {"availability": "out_of_stock"})
+    check("availability toggled", st == 302 and loc.endswith("/shop/products"), (st, loc))
+    with sqlite3.connect(DB) as con:
+        state = con.execute("SELECT availability FROM product WHERE id=?", (pid,)).fetchone()[0]
+    check("availability is out of stock", state == "out_of_stock", state)
+    post(shop_s, f"/shop/products/{pid}/availability", {"availability": "in_stock"})
+
+    st, loc, _ = post(cust_s, f"/products/{pid}/enquire",
+                      {"kind": "enquiry", "message": "Is this available in walnut?"})
+    check("customer sends enquiry", st == 302 and loc.endswith(f"/products/{pid}"), (st, loc))
+    with sqlite3.connect(DB) as con:
+        enq = con.execute("SELECT id, status FROM enquiry WHERE product_id=?", (pid,)).fetchone()
+    check("enquiry stored as new", enq and enq[1] == "new", enq)
+    st, _, html = request(shop_f, "/shop/enquiries")
+    check("owner inbox shows enquiry", st == 200 and "Is this available in walnut?" in html)
+    st, loc, _ = post(cust_s, f"/shop/enquiries/{enq[0]}/status", {"status": "closed"})
+    check("customer cannot change status", st == 302 and loc.endswith("/dashboard"), (st, loc))
+    st, loc, _ = post(shop_s, f"/shop/enquiries/{enq[0]}/status", {"status": "responded"})
+    check("owner updates enquiry status", st == 302 and loc.endswith("/shop/enquiries"), (st, loc))
+    with sqlite3.connect(DB) as con:
+        state = con.execute("SELECT status FROM enquiry WHERE id=?", (enq[0],)).fetchone()[0]
+    check("enquiry status persisted", state == "responded", state)
 
     body, ctype = multipart({"name": "Bad File", "price": "10"}, "bad.txt", b"not an image")
     st, _, _ = request(shop_s, "/shop/products/add", body, ctype)
@@ -181,6 +243,9 @@ def main():
         ids = [con.execute("SELECT id FROM user WHERE username=?", (u,)).fetchone()[0]
                for u in created_users]
         marks = ",".join("?" * len(ids))
+        con.execute(f"DELETE FROM enquiry WHERE customer_id IN ({marks}) "
+                    f"OR shop_owner_id IN ({marks})", ids + ids)
+        con.execute(f"DELETE FROM shop_profile WHERE owner_id IN ({marks})", ids)
         con.execute(f"DELETE FROM design WHERE user_id IN ({marks})", ids)
         con.execute(f"DELETE FROM user WHERE id IN ({marks})", ids)
     for name in product_images:

@@ -34,11 +34,24 @@
         <p>Upload a new item to your storefront in under a minute.</p>
         <span class="role-badge">New product →</span>
       </a>
-      <div class="feature">
+      <a class="feature feature-link" href="{{ url_for('shop_enquiries') }}">
         <b>Orders &amp; enquiries</b>
-        <p>See customers interested in items from your catalogue.</p>
-        <span class="role-badge">Coming soon</span>
-      </div>
+        <p>{{ enquiry_count }} message(s), {{ new_enquiries }} new. Reply and update their status.</p>
+        <span class="role-badge">Open inbox →</span>
+      </a>
+      <a class="feature feature-link" href="{{ url_for('shop_profile_view') }}">
+        <b>Shop profile</b>
+        {% if profile and profile.verified %}
+        <p>Verified — your products are visible in the public catalogue.</p>
+        <span class="role-badge">Verified →</span>
+        {% elif profile %}
+        <p>Submitted for verification. Products stay private until approved.</p>
+        <span class="role-badge">Pending verification →</span>
+        {% else %}
+        <p>Add your shop name, city, address and phone for admin verification.</p>
+        <span class="role-badge">Register shop →</span>
+        {% endif %}
+      </a>
     </div>
   </section>
 
@@ -48,7 +61,9 @@
     <dl class="details" style="margin-top:1rem">
       <div><dt>Account</dt><dd>{{ current_user.username }}</dd></div>
       <div><dt>Role</dt><dd><span class="role-badge">{{ current_user.role_label }}</span></dd></div>
-      <div><dt>Next step</dt><dd>Add your first product to the catalogue</dd></div>
+      <div><dt>Next step</dt><dd>
+        {% if not profile %}Register your shop for verification{% elif not profile.verified %}Wait for admin verification{% elif not products %}Add your first product to the catalogue{% else %}Review enquiries and update availability{% endif %}
+      </dd></div>
     </dl>
   </section>
 </div>

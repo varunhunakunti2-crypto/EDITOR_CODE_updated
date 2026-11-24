@@ -57,7 +57,8 @@ The result page (`/design/<id>`) has a "Place furniture" panel:
 - Drag placed items to move them; scroll over an item to resize; use × to remove one; Clear removes all
 - "Download design" flattens the arranged items onto the original result and saves a PNG
 
-Placement is a client-side preview — it is not saved to the design record.
+The placement preview can also be saved to the design record with the Save
+placement button (see below).
 
 ## Room measurement (OpenCV)
 `room_analysis.py` measures a room from one photo with Canny edges + Hough
@@ -91,9 +92,26 @@ Furniture arrangements are saved with `POST /design/<id>/placement` (JSON with
 an `items` list; design owner or admin only) and restored when the result page
 is reopened. The Save placement button in the placement panel calls this route.
 
+## Shop verification, catalogue and enquiries
+- `/shop/profile` — shop name, city, address and phone. Submitting resets the
+  status to **pending**; products stay private until an admin approves the shop.
+- `/admin/shops/<owner_id>/verify` — admin verifies or revokes a shop. Existing
+  shops from older databases are migrated as already verified, so their products
+  never disappear.
+- `/products` and `/products/<id>` — only show products from verified shops
+  (owners still see their own pending items; admins see everything).
+- `/shop/products/<id>/edit` — edit name, category, price, description,
+  dimensions and availability; the image can be kept or replaced.
+- `/shop/products/<id>/availability` — set in stock / out of stock / made to
+  order. The product list has a select and Update button for each item.
+- `/products/<id>/enquire` — a customer or designer sends an enquiry or order
+  (optionally linked to one of their designs) to the shop owner.
+- `/shop/enquiries` — owner/admin inbox with new / responded / closed status
+  updates via `/shop/enquiries/<id>/status`.
+
 ## Admin lists and product details
 - `/admin/users` — full user list with roles, design/product counts and shop links
-- `/admin/shops` — shop owners with product/in-stock counts; `/admin/shops/<owner_id>` opens one shop's catalogue
+- `/admin/shops` — shop owners with verification status and product/in-stock counts; `/admin/shops/<owner_id>` opens one shop's catalogue and verification controls
 - `/products` — furniture catalogue for any logged-in user; `/products/<product_id>` shows full details (price, category, dimensions, availability, description, seller) with a "Place in my design" shortcut
 
 Admin list routes are role-protected; non-admins are redirected to their dashboard.
@@ -123,11 +141,12 @@ gitignored.
 
 Start the app first (`python app.py`), then run the suites from the project folder:
 
-    python tests/smoke_test.py       # 41 HTTP/DB checks, standard library only
+    python tests/smoke_test.py       # 60 HTTP/DB checks, standard library only
     python tests/browser_check.py    # 12 real-browser checks + screenshot generator
     python tests/room_analysis_check.py  # OpenCV measurement checks, no server needed
     python tests/backend_check.py    # in-process API/DB checks, stubbed AI, no server needed
     python tests/flow_check.py       # full analyze -> design -> result flow in a browser
+    python tests/shop_flow_check.py  # shop register -> verify -> catalogue/edit/enquiry flow
 
 `smoke_test.py` verifies public pages, role-based redirects and guards for all four
 roles, product upload/list/detail/delete, catalogue access, admin lists and file
@@ -140,11 +159,12 @@ manual overrides, and also analyses any uploaded room photos.
 result page, checks the whole-room mask, and exercises placement guards with a
 stubbed pipeline (no diffusion or API keys needed). `flow_check.py` drives the
 whole room-analysis → design → result journey in Chromium with real inpainting
-(slower, ~1 minute), then removes its demo account and design.
+(slower, ~1 minute), then removes its demo account and design. `shop_flow_check.py`
+covers the full shop journey in Chromium without diffusion (fast).
 
     pip install playwright && python -m playwright install chromium
 
-Both suites create temporary demo accounts, products and a design, then delete
+The suites create temporary demo accounts, products and a design, then delete
 them (and their uploaded images) when they finish, leaving existing data intact.
 Older rows with a NULL `created_at` are rendered safely via the `date` template
 filter and backfilled by `upgrade_schema()` on startup.

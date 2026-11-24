@@ -350,6 +350,16 @@ p{margin:0}
 /* Catalogue, product details and admin lists */
 .product-actions{display:grid;gap:8px;margin-top:auto}
 .product-actions form{margin-top:0}
+.avail-form{display:flex;gap:6px;align-items:center}
+.avail-form select{flex:1;min-width:0;padding:.45rem .6rem;font-size:.82rem}
+.avail-form .btn{padding:.45rem .7rem;font-size:.78rem}
+.enquiry{padding:1.1rem 0;border-bottom:1px solid var(--mist)}
+.enquiry:last-child{border-bottom:0;padding-bottom:0}
+.enquiry-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.enquiry-head h2{margin:0;font:700 1.05rem var(--font-ui)}
+.enquiry-message{margin:.8rem 0;padding:.7rem .9rem;border-radius:var(--r-md);background:var(--paper);color:var(--ink-2)}
+.enquiry-status{display:flex;gap:8px;align-items:center;max-width:360px}
+.enquiry-status select{flex:1}
 .detail-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,420px);gap:32px;align-items:start}
 .detail-media{border-radius:var(--r-lg);overflow:hidden;background:var(--mist);box-shadow:var(--shadow)}
 .detail-media img{display:block;width:100%;height:auto}

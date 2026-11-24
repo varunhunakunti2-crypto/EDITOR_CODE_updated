@@ -186,6 +186,21 @@ def upgrade_schema():
                 "UPDATE user SET role = 'admin' WHERE id = (SELECT MIN(id) FROM user)"
             ))
 
+        # Shops that existed before verification was introduced stay visible:
+        # give each one an approved profile. New shops start unverified.
+        legacy_shops = conn.execute(text(
+            "SELECT id, username FROM user WHERE role = 'shop_owner'"
+        )).all()
+        for owner_id, username in legacy_shops:
+            has_profile = conn.execute(text(
+                "SELECT 1 FROM shop_profile WHERE owner_id = :owner"
+            ), {'owner': owner_id}).first()
+            if not has_profile:
+                conn.execute(text(
+                    "INSERT INTO shop_profile (owner_id, shop_name, verified, "
+                    "submitted_at) VALUES (:owner, :name, 1, CURRENT_TIMESTAMP)"
+                ), {'owner': owner_id, 'name': (username or 'Shop') + ' Shop'})
+
         # Older rows pre-date the created_at default: backfill any NULL timestamps
         # so templates can rely on a real date.
         for table in ('user', 'design', 'product'):

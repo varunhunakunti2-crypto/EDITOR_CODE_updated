@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Shop profile{% endblock %}
+{% block content %}
+<div class="container page">
+  <div class="page-head">
+    <div>
+      <h1>Shop profile</h1>
+      <p>Tell customers who you are. An admin reviews these details before your products appear publicly.</p>
+    </div>
+    <a href="{{ url_for('shop_dashboard') }}" class="btn btn-ghost btn-lg">{{ icon('store') }} Shop dashboard</a>
+  </div>
+
+  <section class="panel form-panel">
+    <div class="head-actions" style="margin-bottom:1rem">
+      <span class="role-badge">
+        {% if profile and profile.verified %}Verified{% elif profile %}Pending verification{% else %}Not submitted{% endif %}
+      </span>
+      {% if profile and profile.submitted_at %}
+      <span class="sub">Submitted {{ profile.submitted_at|date }}</span>
+      {% endif %}
+    </div>
+    {% if profile and not profile.verified %}
+    <p class="notice">Your catalogue is private until an admin verifies this shop. You can still add and edit products.</p>
+    {% endif %}
+    <form method="POST">
+      <div class="form-grid">
+        <div class="field">
+          <label for="shop_name">Shop name *</label>
+          <input class="input" id="shop_name" name="shop_name" type="text" maxlength="120" required
+                 value="{{ profile.shop_name if profile else '' }}" placeholder="e.g. Heritage Interiors">
+        </div>
+        <div class="field">
+          <label for="city">City</label>
+          <input class="input" id="city" name="city" type="text" maxlength="100"
+                 value="{{ profile.city if profile else '' }}" placeholder="e.g. Bengaluru">
+        </div>
+        <div class="field">
+          <label for="phone">Phone</label>
+          <input class="input" id="phone" name="phone" type="text" maxlength="40"
+                 value="{{ profile.phone if profile else '' }}" placeholder="e.g. +91 98765 43210">
+        </div>
+        <div class="field full">
+          <label for="address">Address</label>
+          <textarea class="textarea" id="address" name="address" rows="4" maxlength="500"
+                    placeholder="Street, area, landmark and postal code">{{ profile.address if profile else '' }}</textarea>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg">{{ icon('check') }} Submit for verification</button>
+      {% if profile and profile.verified %}
+      <p class="hint">Changing these details resets verification and hides your products until an admin reviews them again.</p>
+      {% endif %}
+    </form>
+  </section>
+</div>
+{% endblock %}

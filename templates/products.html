@@ -38,6 +38,16 @@
         </dl>
         <div class="product-actions">
           <a href="{{ url_for('product_detail', product_id=p.id) }}" class="btn btn-light btn-block">{{ icon('expand') }} View details</a>
+          <a href="{{ url_for('product_edit', product_id=p.id) }}" class="btn btn-ghost btn-block">{{ icon('wand') }} Edit details</a>
+          <form method="POST" action="{{ url_for('product_availability', product_id=p.id) }}" class="avail-form">
+            <label class="sr-only" for="availability-{{ p.id }}">Availability for {{ p.name }}</label>
+            <select class="input" id="availability-{{ p.id }}" name="availability">
+              {% for value, label in availability.items() %}
+              <option value="{{ value }}" {% if p.availability == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-ghost">Update</button>
+          </form>
           <form method="POST" action="{{ url_for('product_delete', product_id=p.id) }}"
                 onsubmit="return confirm('Delete {{ p.name }} from your catalogue?');">
             <button type="submit" class="btn btn-ghost btn-block">{{ icon('x') }} Delete</button>

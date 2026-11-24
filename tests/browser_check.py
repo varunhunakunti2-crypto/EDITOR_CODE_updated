@@ -61,6 +61,9 @@ def setup_demo():
         cust_id = con.execute("SELECT id FROM user WHERE username=?", (cust_u,)).fetchone()[0]
         con.execute("UPDATE user SET role='admin' WHERE id=?", (admin_id,))
     post(admin_s, "/login", {"username": admin_u, "password": "pass123"})
+    post(shop_f, "/shop/profile", {"shop_name": "Demo Interiors", "city": "Bengaluru",
+                                   "address": "1 Demo Street", "phone": "9876543210"})
+    post(admin_s, f"/admin/shops/{shop_id}/verify", {"verified": "1"})
 
     products, images = [], []
     for name, category, price, filename in [
@@ -104,6 +107,9 @@ def cleanup(demo):
         ids = [con.execute("SELECT id FROM user WHERE username=?", (demo[k],)).fetchone()[0]
                for k in ("admin", "shop", "cust")]
         marks = ",".join("?" * len(ids))
+        con.execute("DELETE FROM enquiry WHERE customer_id IN (%s) "
+                    "OR shop_owner_id IN (%s)" % (marks, marks), ids + ids)
+        con.execute("DELETE FROM shop_profile WHERE owner_id IN (%s)" % marks, ids)
         con.execute("DELETE FROM product WHERE owner_id IN (%s)" % marks, ids)
         con.execute("DELETE FROM design WHERE id=?", (demo["design_id"],))
         con.execute("DELETE FROM user WHERE id IN (%s)" % marks, ids)

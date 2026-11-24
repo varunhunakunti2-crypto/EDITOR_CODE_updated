@@ -17,26 +17,33 @@
   <div class="stats">
     <div class="stat"><b>{{ shops|length }}</b><span>Shops</span></div>
     <div class="stat"><b>{{ total_products }}</b><span>Products listed</span></div>
-    <div class="stat"><b>{{ active_shops }}</b><span>Active shops</span></div>
+    <div class="stat"><b>{{ verified_shops }}</b><span>Verified shops</span></div>
   </div>
 
   <section class="panel">
     <h2>Shop owners</h2>
     <div class="table-wrap">
       <table class="data-table">
-        <thead><tr><th>Shop</th><th>Owner email</th><th>Products</th><th>In stock</th><th>Joined</th><th></th></tr></thead>
+        <thead><tr><th>Shop</th><th>Owner email</th><th>Status</th><th>Products</th><th>In stock</th><th>Joined</th><th></th></tr></thead>
         <tbody>
           {% for s in shops %}
           <tr>
-            <td><b>{{ s.username }}</b></td>
+            <td><b>{{ s.shop_profile.shop_name if s.shop_profile else s.username }}</b></td>
             <td>{{ s.email }}</td>
+            <td>
+              {% if s.shop_profile and s.shop_profile.verified %}
+              <span class="role-badge">Verified</span>
+              {% elif s.shop_profile %}
+              <span class="role-badge">Pending</span>
+              {% else %}<span class="role-badge">No profile</span>{% endif %}
+            </td>
             <td>{{ s.products|length }}</td>
             <td>{{ s.products|selectattr('availability', 'equalto', 'in_stock')|list|length }}</td>
             <td>{{ s.created_at|date }}</td>
             <td><a href="{{ url_for('admin_shop', owner_id=s.id) }}">View catalogue →</a></td>
           </tr>
           {% else %}
-          <tr><td colspan="6">No shop owners have registered yet.</td></tr>
+          <tr><td colspan="7">No shop owners have registered yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>

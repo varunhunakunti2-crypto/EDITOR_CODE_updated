@@ -2,6 +2,7 @@ import os
 import json
 import tempfile
 import threading
+from datetime import datetime
 from functools import wraps
 import torch
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, abort
@@ -10,8 +11,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from PIL import Image
 from diffusers import StableDiffusionInpaintPipeline, DPMSolverMultistepScheduler
-from database import (db, User, Design, Product, upgrade_schema,
-                      ROLES, SIGNUP_ROLES, AVAILABILITY)
+from sqlalchemy import or_
+from database import (db, User, Design, Product, ShopProfile, Enquiry,
+                      upgrade_schema, ROLES, SIGNUP_ROLES, AVAILABILITY,
+                      ENQUIRY_KINDS, ENQUIRY_STATUSES)
 import uuid
 import config
 import masking
@@ -44,6 +47,28 @@ def role_required(*roles):
             return view(*args, **kwargs)
         return wrapped
     return decorator
+
+
+def verified_shop_ids():
+    """Owner IDs whose shop profile has been approved by an admin."""
+    return [row[0] for row in db.session.query(ShopProfile.owner_id).filter_by(
+        verified=True).all()]
+
+
+def visible_products():
+    """Catalogue query: verified shops only, plus the owner's own pending items."""
+    query = Product.query
+    if current_user.is_admin:
+        return query
+    ids = verified_shop_ids()
+    if current_user.is_authenticated and current_user.role == 'shop_owner':
+        return query.filter(or_(Product.owner_id == current_user.id,
+                                Product.owner_id.in_(ids)))
+    return query.filter(Product.owner_id.in_(ids))
+
+
+def shop_profile_for(owner_id):
+    return ShopProfile.query.filter_by(owner_id=owner_id).first()
 
 
 def safe_print(message):
@@ -265,11 +290,43 @@ def shop_dashboard():
     query = Product.query
     if not current_user.is_admin:
         query = query.filter_by(owner_id=current_user.id)
+    enquiries = Enquiry.query
+    if not current_user.is_admin:
+        enquiries = enquiries.filter_by(shop_owner_id=current_user.id)
     return render_template('shop.html',
                            total_designs=Design.query.count(),
                            designs_with_places=Design.query.filter(
                                Design.places_json != '').count(),
+                           profile=shop_profile_for(current_user.id),
+                           enquiry_count=enquiries.count(),
+                           new_enquiries=enquiries.filter_by(status='new').count(),
                            products=query.order_by(Product.created_at.desc()).all())
+
+
+@app.route('/shop/profile', methods=['GET', 'POST'])
+@role_required('shop_owner', 'admin')
+def shop_profile_view():
+    """Register or update this owner's shop details (resets verification)."""
+    profile = shop_profile_for(current_user.id)
+    if request.method == 'POST':
+        shop_name = (request.form.get('shop_name') or '').strip()[:120]
+        if not shop_name:
+            flash('Please enter your shop name.', 'error')
+            return redirect(request.url)
+        if profile is None:
+            profile = ShopProfile(owner_id=current_user.id)
+            db.session.add(profile)
+        profile.shop_name = shop_name
+        profile.city = (request.form.get('city') or '').strip()[:100]
+        profile.address = (request.form.get('address') or '').strip()[:500]
+        profile.phone = (request.form.get('phone') or '').strip()[:40]
+        profile.verified = False
+        profile.submitted_at = datetime.utcnow()
+        db.session.commit()
+        flash('Shop details submitted. Products will appear in the public '
+              'catalogue once an admin verifies the shop.', 'success')
+        return redirect(url_for('shop_dashboard'))
+    return render_template('shop_profile.html', profile=profile)
 
 
 @app.route('/shop/products')
@@ -279,7 +336,7 @@ def products():
     query = Product.query
     if not current_user.is_admin:
         query = query.filter_by(owner_id=current_user.id)
-    return render_template('products.html',
+    return render_template('products.html', availability=AVAILABILITY,
                            products=query.order_by(Product.created_at.desc()).all())
 
 
@@ -336,6 +393,8 @@ def product_delete(product_id):
     product = Product.query.get_or_404(product_id)
     if not current_user.is_admin and product.owner_id != current_user.id:
         abort(403)
+    # Enquiries point at the product with a non-nullable FK; remove them too.
+    Enquiry.query.filter_by(product_id=product.id).delete(synchronize_session=False)
     db.session.delete(product)
     db.session.commit()
     try:
@@ -343,6 +402,84 @@ def product_delete(product_id):
     except OSError:
         pass
     flash('Product deleted.', 'success')
+    return redirect(url_for('products'))
+
+
+def _owned_product(product_id):
+    """Fetch a product the current user may change, or abort with 403/404."""
+    product = Product.query.get_or_404(product_id)
+    if not current_user.is_admin and product.owner_id != current_user.id:
+        abort(403)
+    return product
+
+
+@app.route('/shop/products/<int:product_id>/edit', methods=['GET', 'POST'])
+@role_required('shop_owner', 'admin')
+def product_edit(product_id):
+    """Edit an existing catalogue item; the image can be left unchanged."""
+    product = _owned_product(product_id)
+    if request.method == 'POST':
+        name = (request.form.get('name') or '').strip()
+        if not name:
+            flash('Please enter a product name.', 'error')
+            return redirect(request.url)
+        try:
+            price = round(float(request.form.get('price', '')), 2)
+            if price < 0:
+                raise ValueError
+        except ValueError:
+            flash('Please enter a valid price.', 'error')
+            return redirect(request.url)
+        availability = request.form.get('availability', 'in_stock')
+        if availability not in AVAILABILITY:
+            availability = product.availability
+
+        image = request.files.get('image')
+        if image and image.filename:
+            if not allowed_file(image.filename):
+                flash('Invalid image type! Please upload PNG, JPG, or JPEG.', 'error')
+                return redirect(request.url)
+            extension = os.path.splitext(image.filename)[1].lower()
+            image_file = str(uuid.uuid4()) + extension
+            image.save(os.path.join(STATIC_UPLOADS, 'products', image_file))
+            old_image = product.image_file
+            product.image_file = image_file
+            try:
+                os.remove(os.path.join(STATIC_UPLOADS, 'products', old_image))
+            except OSError:
+                pass
+
+        product.name = name[:120]
+        product.category = (request.form.get('category') or '').strip()[:60]
+        product.price = price
+        product.description = (request.form.get('description') or '').strip()[:1000]
+        product.dimensions = (request.form.get('dimensions') or '').strip()[:60]
+        product.availability = availability
+        db.session.commit()
+        flash('Product updated.', 'success')
+        return redirect(url_for('products'))
+    return render_template('product_add.html', product=product,
+                           availability=AVAILABILITY)
+
+
+@app.route('/shop/products/<int:product_id>/availability', methods=['POST'])
+@role_required('shop_owner', 'admin')
+def product_availability(product_id):
+    """Set a product's stock state (or cycle to the next one if omitted)."""
+    product = _owned_product(product_id)
+    payload = request.get_json(silent=True) if request.is_json else None
+    value = (request.form.get('availability') or
+             (payload.get('availability') if isinstance(payload, dict) else None))
+    if value not in AVAILABILITY:
+        states = list(AVAILABILITY)
+        value = states[(states.index(product.availability) + 1) % len(states)] \
+            if product.availability in states else states[0]
+    product.availability = value
+    db.session.commit()
+    if request.is_json:
+        return jsonify(id=product.id, availability=value,
+                       label=product.availability_label)
+    flash('Availability set to ' + product.availability_label + '.', 'success')
     return redirect(url_for('products'))
 
 
@@ -361,7 +498,9 @@ def admin_shops():
     shops = User.query.filter_by(role='shop_owner').order_by(User.created_at.desc()).all()
     return render_template('admin_shops.html', shops=shops,
                            total_products=Product.query.count(),
-                           active_shops=sum(1 for s in shops if s.products))
+                           active_shops=sum(1 for s in shops if s.products),
+                           verified_shops=sum(1 for s in shops if s.shop_profile
+                                              and s.shop_profile.verified))
 
 
 @app.route('/admin/shops/<int:owner_id>')
@@ -371,26 +510,104 @@ def admin_shop(owner_id):
     owner = User.query.filter_by(id=owner_id, role='shop_owner').first_or_404()
     products = Product.query.filter_by(owner_id=owner.id).order_by(
         Product.created_at.desc()).all()
-    return render_template('admin_shop.html', owner=owner, products=products)
+    return render_template('admin_shop.html', owner=owner, products=products,
+                           profile=shop_profile_for(owner.id))
+
+
+@app.route('/admin/shops/<int:owner_id>/verify', methods=['POST'])
+@role_required('admin')
+def admin_shop_verify(owner_id):
+    """Approve or revoke a shop, controlling public catalogue visibility."""
+    owner = User.query.filter_by(id=owner_id, role='shop_owner').first_or_404()
+    profile = shop_profile_for(owner.id)
+    if profile is None:
+        profile = ShopProfile(owner_id=owner.id, shop_name=owner.username)
+        db.session.add(profile)
+    verified = (request.form.get('verified', '1') or '1') != '0'
+    profile.verified = verified
+    db.session.commit()
+    flash(('Shop verified. Its products are now publicly listed.'
+           if verified else 'Shop verification revoked. Products are hidden.'),
+          'success')
+    return redirect(url_for('admin_shop', owner_id=owner.id))
 
 
 @app.route('/products')
 @login_required
 def catalogue():
     """Browse every listed product (for customers, designers and admins)."""
-    products = Product.query.order_by(Product.created_at.desc()).all()
+    products = visible_products().order_by(Product.created_at.desc()).all()
     return render_template('catalogue.html', products=products)
 
 
 @app.route('/products/<int:product_id>')
 @login_required
 def product_detail(product_id):
-    """Full details for one catalogue item."""
-    product = Product.query.get_or_404(product_id)
-    latest_design = Design.query.filter_by(user_id=current_user.id).order_by(
-        Design.created_at.desc()).first()
+    """Full details for one catalogue item from a verified shop."""
+    product = visible_products().filter_by(id=product_id).first_or_404()
+    designs = Design.query.filter_by(user_id=current_user.id).order_by(
+        Design.created_at.desc()).all()
     return render_template('product_detail.html', product=product,
-                           latest_design=latest_design)
+                           latest_design=designs[0] if designs else None,
+                           designs=designs, enquiry_kinds=ENQUIRY_KINDS)
+
+
+@app.route('/products/<int:product_id>/enquire', methods=['POST'])
+@login_required
+def product_enquire(product_id):
+    """Send an enquiry or order about a product to its shop owner."""
+    product = visible_products().filter_by(id=product_id).first_or_404()
+    message = (request.form.get('message') or '').strip()[:1000]
+    if not message:
+        flash('Please write a message for the shop owner.', 'error')
+        return redirect(url_for('product_detail', product_id=product_id))
+    kind = request.form.get('kind', 'enquiry')
+    if kind not in ENQUIRY_KINDS:
+        kind = 'enquiry'
+    design_id = None
+    raw_id = (request.form.get('design_id') or '').strip()
+    if raw_id.isdigit():
+        candidate = Design.query.get(int(raw_id))
+        if candidate and (current_user.is_admin or
+                          candidate.user_id == current_user.id):
+            design_id = candidate.id
+    db.session.add(Enquiry(
+        product_id=product.id, customer_id=current_user.id,
+        shop_owner_id=product.owner_id, design_id=design_id,
+        message=message, kind=kind, status='new',
+    ))
+    db.session.commit()
+    flash('Your ' + kind + ' was sent to ' + product.owner.username + '.',
+          'success')
+    return redirect(url_for('product_detail', product_id=product_id))
+
+
+@app.route('/shop/enquiries')
+@role_required('shop_owner', 'admin')
+def shop_enquiries():
+    """Inbox of customer enquiries and orders for this shop."""
+    query = Enquiry.query
+    if not current_user.is_admin:
+        query = query.filter_by(shop_owner_id=current_user.id)
+    enquiries = query.order_by(Enquiry.created_at.desc()).all()
+    return render_template('enquiries.html', enquiries=enquiries,
+                           statuses=ENQUIRY_STATUSES, kinds=ENQUIRY_KINDS)
+
+
+@app.route('/shop/enquiries/<int:enquiry_id>/status', methods=['POST'])
+@role_required('shop_owner', 'admin')
+def enquiry_status(enquiry_id):
+    """Move an enquiry/order to new, responded or closed."""
+    enquiry = Enquiry.query.get_or_404(enquiry_id)
+    if not current_user.is_admin and enquiry.shop_owner_id != current_user.id:
+        abort(403)
+    status = request.form.get('status', '')
+    if status not in ENQUIRY_STATUSES:
+        abort(400)
+    enquiry.status = status
+    db.session.commit()
+    flash('Enquiry marked as ' + enquiry.status_label.lower() + '.', 'success')
+    return redirect(url_for('shop_enquiries'))
 
 
 @app.context_processor
@@ -630,7 +847,7 @@ def result(design_id):
     except ValueError:
         placement = {}
     # Furniture from the shop catalogue is available to drag onto the result.
-    furniture = Product.query.order_by(Product.created_at.desc()).all()
+    furniture = visible_products().order_by(Product.created_at.desc()).all()
     return render_template('result.html', d=d, nearby=nearby, placement=placement,
                            room_summary=describe_room(
                                d.room_type, d.style, d.budget,

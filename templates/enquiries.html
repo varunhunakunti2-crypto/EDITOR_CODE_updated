@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Enquiries{% endblock %}
+{% block content %}
+<div class="container page">
+  <div class="page-head">
+    <div>
+      <h1>Enquiries &amp; orders</h1>
+      <p>Messages customers sent about your products. Update each status as you respond.</p>
+    </div>
+    <a href="{{ url_for('shop_dashboard') }}" class="btn btn-ghost btn-lg">{{ icon('store') }} Shop dashboard</a>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><b>{{ enquiries|length }}</b><span>Total</span></div>
+    <div class="stat"><b>{{ enquiries|selectattr('status', 'equalto', 'new')|list|length }}</b><span>New</span></div>
+    <div class="stat"><b>{{ enquiries|selectattr('status', 'equalto', 'responded')|list|length }}</b><span>Responded</span></div>
+    <div class="stat"><b>{{ enquiries|selectattr('status', 'equalto', 'closed')|list|length }}</b><span>Closed</span></div>
+  </div>
+
+  <section class="panel">
+    {% for e in enquiries %}
+    <article class="enquiry">
+      <div class="enquiry-head">
+        <h2>{{ e.kind_label }} · {{ e.product.name }}</h2>
+        <span class="role-badge">{{ e.status_label }}</span>
+      </div>
+      <dl class="details">
+        <div><dt>From</dt><dd>{{ e.customer.username }}</dd></div>
+        <div><dt>Received</dt><dd>{{ e.created_at|date }}</dd></div>
+        {% if e.design %}<div><dt>Related design</dt><dd><a href="{{ url_for('result', design_id=e.design_id) }}">Open design</a></dd></div>{% endif %}
+      </dl>
+      <p class="enquiry-message">{{ e.message }}</p>
+      <form method="POST" action="{{ url_for('enquiry_status', enquiry_id=e.id) }}" class="enquiry-status">
+        <label class="sr-only" for="status-{{ e.id }}">Status</label>
+        <select class="input" id="status-{{ e.id }}" name="status">
+          {% for value, label in statuses.items() %}
+          <option value="{{ value }}" {% if e.status == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-ghost">{{ icon('check') }} Update</button>
+      </form>
+    </article>
+    {% else %}
+    <div class="empty">
+      {{ icon('user') }}
+      <h2>No enquiries yet</h2>
+      <p>When a customer asks about one of your products, it will appear here.</p>
+    </div>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}
