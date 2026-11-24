@@ -1047,6 +1047,14 @@ def save_placement(design_id):
             number = default
         return round(min(high, max(low, number)), 4)
 
+    def angle(value):
+        """Normalise a rotation to -180..180 degrees, like the browser editor."""
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            number = 0.0
+        return round(((number + 180) % 360) - 180, 2)
+
     cleaned = []
     for item in payload['items']:
         if not isinstance(item, dict):
@@ -1060,6 +1068,7 @@ def save_placement(design_id):
             'rx': bounded(item.get('rx'), 0, 1, 0.5),
             'ry': bounded(item.get('ry'), 0, 1, 0.5),
             'scale': bounded(item.get('scale'), 0.05, 0.7, 0.18),
+            'rotation': angle(item.get('rotation', item.get('rot'))),
         })
 
     d.placement_json = json.dumps({'items': cleaned}, separators=(',', ':'))

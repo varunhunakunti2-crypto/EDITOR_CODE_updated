@@ -7,14 +7,24 @@
   const status = panel.querySelector('[data-placement-status]');
   const resultUrl = panel.dataset.resultImage;
   const DEFAULT_SCALE = 0.18;
+  const ROTATE_STEP = 15;
   let items = [];
 
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
+  // Keep angles in -180..180 so saved arrangements round-trip cleanly.
+  function normalizeRotation(value) {
+    const n = Number(value) || 0;
+    return ((n + 180) % 360 + 360) % 360 - 180;
+  }
+
   function position(el) {
+    const rotation = normalizeRotation(el.dataset.rotation);
+    el.dataset.rotation = rotation;
     el.style.left = (parseFloat(el.dataset.rx) * 100) + '%';
     el.style.top = (parseFloat(el.dataset.ry) * 100) + '%';
     el.style.width = (parseFloat(el.dataset.scale) * 100) + '%';
+    el.style.transform = 'translate(-50%, -50%) rotate(' + rotation + 'deg)';
   }
 
   function refreshHint() {
@@ -29,14 +39,28 @@
     });
   }
 
-  function addItem(src, rx, ry, name) {
+  function controlButton(className, label, text, onClick) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = className;
+    button.textContent = text;
+    button.setAttribute('aria-label', label);
+    button.addEventListener('click', e => {
+      e.stopPropagation();
+      onClick();
+    });
+    return button;
+  }
+
+  function addItem(src, rx, ry, name, scale, rotation) {
     const el = document.createElement('div');
     el.className = 'placed-item';
     el.dataset.src = src;
     el.dataset.name = name || 'Furniture';
     el.dataset.rx = rx;
     el.dataset.ry = ry;
-    el.dataset.scale = DEFAULT_SCALE;
+    el.dataset.scale = clamp(Number(scale) || DEFAULT_SCALE, 0.05, 0.7);
+    el.dataset.rotation = normalizeRotation(rotation || 0);
 
     const img = document.createElement('img');
     img.src = src;
@@ -44,20 +68,31 @@
     img.draggable = false;
     el._image = img;
 
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'remove';
-    remove.textContent = '\u00d7';
-    remove.setAttribute('aria-label', 'Remove ' + el.dataset.name);
-    remove.addEventListener('click', e => {
-      e.stopPropagation();
-      el.remove();
-      items = items.filter(x => x !== el);
-      refreshHint();
-    });
+    const remove = controlButton('remove', 'Remove ' + el.dataset.name,
+      '\u00d7', () => {
+        el.remove();
+        items = items.filter(x => x !== el);
+        refreshHint();
+      });
+
+    const rotateLeft = controlButton('rotate rotate-left',
+      'Rotate ' + el.dataset.name + ' left', '\u21ba', () => {
+        el.dataset.rotation = normalizeRotation(
+          normalizeRotation(el.dataset.rotation) - ROTATE_STEP);
+        position(el);
+      });
+
+    const rotateRight = controlButton('rotate rotate-right',
+      'Rotate ' + el.dataset.name + ' right', '\u21bb', () => {
+        el.dataset.rotation = normalizeRotation(
+          normalizeRotation(el.dataset.rotation) + ROTATE_STEP);
+        position(el);
+      });
 
     el.appendChild(img);
     el.appendChild(remove);
+    el.appendChild(rotateLeft);
+    el.appendChild(rotateRight);
     canvas.appendChild(el);
     items.push(el);
     position(el);
@@ -70,12 +105,12 @@
   function restore(saved) {
     (saved || []).forEach(item => {
       if (!item || !item.src) return;
-      const el = addItem(item.src,
+      addItem(item.src,
         clamp(Number(item.rx) || 0, 0, 1),
         clamp(Number(item.ry) || 0, 0, 1),
-        item.name || 'Furniture');
-      el.dataset.scale = clamp(Number(item.scale) || DEFAULT_SCALE, 0.05, 0.7);
-      position(el);
+        item.name || 'Furniture',
+        item.scale,
+        item.rotation !== undefined ? item.rotation : item.rot);
     });
   }
 
@@ -88,7 +123,7 @@
   function attachMove(el) {
     let dragging = false;
     el.addEventListener('pointerdown', e => {
-      if (e.target.closest('.remove')) return;
+      if (e.target.closest('.remove, .rotate')) return;
       dragging = true;
       el.setPointerCapture(e.pointerId);
       e.preventDefault();
@@ -109,8 +144,14 @@
     el.addEventListener('pointercancel', end);
     el.addEventListener('wheel', e => {
       e.preventDefault();
-      const step = e.deltaY < 0 ? 0.01 : -0.01;
-      el.dataset.scale = clamp(parseFloat(el.dataset.scale) + step, 0.05, 0.7);
+      if (e.shiftKey || e.altKey) {
+        const delta = e.deltaY < 0 ? ROTATE_STEP : -ROTATE_STEP;
+        el.dataset.rotation = normalizeRotation(
+          normalizeRotation(el.dataset.rotation) + delta);
+      } else {
+        const step = e.deltaY < 0 ? 0.01 : -0.01;
+        el.dataset.scale = clamp(parseFloat(el.dataset.scale) + step, 0.05, 0.7);
+      }
       position(el);
     }, { passive: false });
   }
@@ -190,6 +231,7 @@
         src: el.dataset.src, name: el.dataset.name,
         rx: parseFloat(el.dataset.rx), ry: parseFloat(el.dataset.ry),
         scale: parseFloat(el.dataset.scale),
+        rotation: normalizeRotation(el.dataset.rotation),
       })),
     };
     try {
@@ -229,7 +271,12 @@
         const h = w * img.naturalHeight / img.naturalWidth;
         const x = parseFloat(el.dataset.rx) * out.width - w / 2;
         const y = parseFloat(el.dataset.ry) * out.height - h / 2;
-        ctx.drawImage(img, x, y, w, h);
+        const rotation = normalizeRotation(el.dataset.rotation) * Math.PI / 180;
+        ctx.save();
+        ctx.translate(x + w / 2, y + h / 2);
+        ctx.rotate(rotation);
+        ctx.drawImage(img, -w / 2, -h / 2, w, h);
+        ctx.restore();
       });
 
       out.toBlob(blob => {

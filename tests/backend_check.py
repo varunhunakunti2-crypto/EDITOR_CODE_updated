@@ -232,7 +232,7 @@ if mask_name:
 url = '/design/%d/placement' % d.id
 payload = {'items': [{
     'src': '/static/uploads/products/lamp.jpg', 'name': 'Lamp',
-    'rx': 0.91, 'ry': 2.0, 'scale': 5,
+    'rx': 0.91, 'ry': 2.0, 'scale': 5, 'rotation': 725,
 }]}
 login_as(ids['other'])
 check('placement rejects non-owner', client.post(url, json=payload).status_code == 403)
@@ -244,7 +244,7 @@ with web.app.app_context():
     saved = json.loads(Design.query.get(d.id).placement_json)
 check('placement values validated', saved['items'][0] == {
     'src': '/static/uploads/products/lamp.jpg', 'name': 'Lamp',
-    'rx': 0.91, 'ry': 1.0, 'scale': 0.7}, saved)
+    'rx': 0.91, 'ry': 1.0, 'scale': 0.7, 'rotation': 5.0}, saved)
 login_as(ids['admin'])
 check('placement allows admin',
       client.post(url, json={'items': []}).status_code == 200)
