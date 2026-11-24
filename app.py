@@ -57,7 +57,8 @@ def verified_shop_ids():
 
 def visible_products():
     """Catalogue query: verified shops only, plus the owner's own pending items."""
-    query = Product.query
+    query = Product.query.filter(or_(Product.hidden.is_(False),
+                                     Product.hidden.is_(None)))
     if current_user.is_admin:
         return query
     ids = verified_shop_ids()
@@ -69,6 +70,24 @@ def visible_products():
 
 def shop_profile_for(owner_id):
     return ShopProfile.query.filter_by(owner_id=owner_id).first()
+
+
+def safe_next(fallback):
+    """Only allow local redirect targets supplied by a form."""
+    target = request.form.get('next', '')
+    return target if target.startswith('/') and not target.startswith('//') \
+        else fallback
+
+
+def delete_product(product):
+    """Remove a product with its enquiries and uploaded image."""
+    Enquiry.query.filter_by(product_id=product.id).delete(synchronize_session=False)
+    db.session.delete(product)
+    db.session.commit()
+    try:
+        os.remove(os.path.join(STATIC_UPLOADS, 'products', product.image_file))
+    except OSError:
+        pass
 
 
 def safe_print(message):
@@ -278,8 +297,13 @@ def admin_dashboard():
     counts = {key: User.query.filter_by(role=key).count() for key in ROLES}
     users = User.query.order_by(User.created_at.desc()).all()
     recent_designs = Design.query.order_by(Design.created_at.desc()).limit(8).all()
+    recent_enquiries = Enquiry.query.order_by(Enquiry.created_at.desc()).limit(8).all()
+    pending_shops = [s for s in User.query.filter_by(role='shop_owner').all()
+                     if not s.shop_profile or not s.shop_profile.verified]
     return render_template('admin.html', counts=counts, users=users,
                            recent_designs=recent_designs,
+                           recent_enquiries=recent_enquiries,
+                           pending_shops=pending_shops,
                            total_designs=Design.query.count())
 
 
@@ -394,13 +418,7 @@ def product_delete(product_id):
     if not current_user.is_admin and product.owner_id != current_user.id:
         abort(403)
     # Enquiries point at the product with a non-nullable FK; remove them too.
-    Enquiry.query.filter_by(product_id=product.id).delete(synchronize_session=False)
-    db.session.delete(product)
-    db.session.commit()
-    try:
-        os.remove(os.path.join(STATIC_UPLOADS, 'products', product.image_file))
-    except OSError:
-        pass
+    delete_product(product)
     flash('Product deleted.', 'success')
     return redirect(url_for('products'))
 
@@ -529,7 +547,101 @@ def admin_shop_verify(owner_id):
     flash(('Shop verified. Its products are now publicly listed.'
            if verified else 'Shop verification revoked. Products are hidden.'),
           'success')
-    return redirect(url_for('admin_shop', owner_id=owner.id))
+    return redirect(safe_next(url_for('admin_shop', owner_id=owner.id)))
+
+
+@app.route('/admin/products')
+@role_required('admin')
+def admin_products():
+    """Moderation queue: flagged products first, then newest."""
+    products = Product.query.order_by(Product.flagged.desc(),
+                                      Product.created_at.desc()).all()
+    return render_template('admin_products.html', products=products,
+                           availability=AVAILABILITY)
+
+
+@app.route('/admin/products/<int:product_id>/moderate', methods=['POST'])
+@role_required('admin')
+def admin_product_moderate(product_id):
+    """Hide, unhide or permanently remove a flagged product."""
+    product = Product.query.get_or_404(product_id)
+    action = request.form.get('action')
+    if action == 'hide':
+        product.hidden = True
+        db.session.commit()
+        flash('Product hidden from the public catalogue.', 'success')
+    elif action == 'unhide':
+        product.hidden = False
+        product.flagged = False
+        db.session.commit()
+        flash('Product restored and flag cleared.', 'success')
+    elif action == 'remove':
+        name = product.name
+        delete_product(product)
+        flash('Removed product: ' + name, 'success')
+    else:
+        abort(400)
+    return redirect(safe_next(url_for('admin_products')))
+
+
+@app.route('/admin/reports')
+@role_required('admin')
+def admin_reports():
+    """Platform counts for users, shops, products, designs and enquiries."""
+    users = User.query.all()
+    shops = [u for u in users if u.role == 'shop_owner']
+    profiles = ShopProfile.query.all()
+    products = Product.query.all()
+    designs = Design.query.all()
+    enquiries = Enquiry.query.all()
+
+    def counts(values, key, keys):
+        found = {}
+        for value in values:
+            name = getattr(value, key, None) or ''
+            found[name] = found.get(name, 0) + 1
+        result = {k: found.get(k, 0) for k in keys}
+        result.update({k: v for k, v in found.items() if k not in result})
+        return result
+
+    room_counts = counts(designs, 'room_type', list(ROOM_TYPES))
+    style_counts = counts(designs, 'style', list(STYLES))
+    return render_template(
+        'admin_reports.html',
+        user_counts={role: sum(1 for u in users if u.role == role) for role in ROLES},
+        total_users=len(users),
+        shop_counts={
+            'total': len(shops),
+            'verified': sum(1 for s in shops if s.shop_profile and s.shop_profile.verified),
+            'pending': sum(1 for s in shops if not s.shop_profile or
+                           not s.shop_profile.verified),
+            'without_products': sum(1 for s in shops if not s.products),
+        },
+        product_counts={
+            'total': len(products),
+            'flagged': sum(1 for p in products if p.flagged),
+            'hidden': sum(1 for p in products if p.hidden),
+            'public': sum(1 for p in products if not p.hidden),
+        },
+        availability_counts=counts(products, 'availability', list(AVAILABILITY)),
+        availability_labels=AVAILABILITY,
+        design_counts={
+            'total': len(designs),
+            'room': room_counts, 'style': style_counts,
+        },
+        room_labels=ROOM_TYPES, style_labels=STYLES,
+        enquiry_counts={
+            'total': len(enquiries),
+            'kind': counts(enquiries, 'kind', list(ENQUIRY_KINDS)),
+            'status': counts(enquiries, 'status', list(ENQUIRY_STATUSES)),
+        },
+        enquiry_labels={'kind': ENQUIRY_KINDS, 'status': ENQUIRY_STATUSES},
+        pending_shops=[s for s in shops if not s.shop_profile or
+                       not s.shop_profile.verified],
+        recent_designs=Design.query.order_by(Design.created_at.desc()).limit(8).all(),
+        recent_enquiries=Enquiry.query.order_by(Enquiry.created_at.desc()).limit(8).all(),
+        total_profiles=len(profiles),
+    )
 
 
 @app.route('/products')
@@ -579,6 +691,19 @@ def product_enquire(product_id):
     db.session.commit()
     flash('Your ' + kind + ' was sent to ' + product.owner.username + '.',
           'success')
+    return redirect(url_for('product_detail', product_id=product_id))
+
+
+@app.route('/products/<int:product_id>/flag', methods=['POST'])
+@login_required
+def product_flag(product_id):
+    """Flag a listing for admin review (owner and admin cannot flag their own)."""
+    product = visible_products().filter_by(id=product_id).first_or_404()
+    if current_user.is_admin or current_user.id == product.owner_id:
+        abort(403)
+    product.flagged = True
+    db.session.commit()
+    flash('Thanks — this product was flagged for admin review.', 'success')
     return redirect(url_for('product_detail', product_id=product_id))
 
 

@@ -82,6 +82,8 @@ class Product(db.Model):
     dimensions = db.Column(db.String(60), default="")
     availability = db.Column(db.String(20), default="in_stock")
     image_file = db.Column(db.String(200), nullable=False)
+    flagged = db.Column(db.Boolean, default=False, server_default='0')
+    hidden = db.Column(db.Boolean, default=False, server_default='0')
     created_at = db.Column(db.DateTime, default=datetime.utcnow,
                            server_default=db.func.current_timestamp())
 
@@ -90,6 +92,14 @@ class Product(db.Model):
     @property
     def availability_label(self):
         return AVAILABILITY.get(self.availability, self.availability or "In stock")
+
+    @property
+    def moderation_label(self):
+        if self.hidden:
+            return "Hidden"
+        if self.flagged:
+            return "Flagged"
+        return "Public"
 
 
 class ShopProfile(db.Model):
@@ -168,6 +178,13 @@ def upgrade_schema():
         # an existing database gains the new tables without touching old rows.
         ShopProfile.__table__.create(bind=conn, checkfirst=True)
         Enquiry.__table__.create(bind=conn, checkfirst=True)
+
+        # Moderation state for older products (0 = visible, not flagged).
+        product_columns = {c['name'] for c in inspector.get_columns('product')}
+        for name, ddl in {'flagged': 'BOOLEAN DEFAULT 0',
+                          'hidden': 'BOOLEAN DEFAULT 0'}.items():
+            if name not in product_columns:
+                conn.execute(text(f'ALTER TABLE product ADD COLUMN {name} {ddl}'))
 
         # Existing accounts pre-date roles and become customers.
         user_columns = {c['name'] for c in inspector.get_columns('user')}

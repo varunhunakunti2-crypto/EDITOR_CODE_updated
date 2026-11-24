@@ -40,7 +40,16 @@
             <td>{{ s.products|length }}</td>
             <td>{{ s.products|selectattr('availability', 'equalto', 'in_stock')|list|length }}</td>
             <td>{{ s.created_at|date }}</td>
-            <td><a href="{{ url_for('admin_shop', owner_id=s.id) }}">View catalogue →</a></td>
+            <td>
+              <div class="head-actions" style="gap:8px">
+                <a href="{{ url_for('admin_shop', owner_id=s.id) }}">View catalogue →</a>
+                <form method="POST" action="{{ url_for('admin_shop_verify', owner_id=s.id) }}">
+                  <input type="hidden" name="verified" value="{{ '0' if s.shop_profile and s.shop_profile.verified else '1' }}">
+                  <input type="hidden" name="next" value="{{ url_for('admin_shops') }}">
+                  <button type="submit" class="btn btn-ghost">{{ 'Revoke' if s.shop_profile and s.shop_profile.verified else 'Verify' }}</button>
+                </form>
+              </div>
+            </td>
           </tr>
           {% else %}
           <tr><td colspan="7">No shop owners have registered yet.</td></tr>

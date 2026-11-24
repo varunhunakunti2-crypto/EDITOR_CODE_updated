@@ -60,6 +60,12 @@
       </section>
       {% endif %}
 
+      {% if not current_user.is_admin and current_user.id != product.owner_id %}
+      <form method="POST" action="{{ url_for('product_flag', product_id=product.id) }}" style="margin-top:.8rem">
+        <button type="submit" class="btn btn-ghost btn-block">{{ icon('alert') }} Report this listing</button>
+      </form>
+      {% endif %}
+
       <div class="head-actions" style="margin-top:1.5rem">
         <a href="{{ url_for('result', design_id=latest_design.id) if latest_design else url_for('design') }}"
            class="btn btn-primary btn-lg">{{ icon('wand') }} Place in my design</a>

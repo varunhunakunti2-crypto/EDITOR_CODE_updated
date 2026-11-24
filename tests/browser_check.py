@@ -200,6 +200,8 @@ def main():
                 ("/admin/users", "11-admin-users", "All accounts"),
                 ("/admin/shops", "12-admin-shops", "Shop owners"),
                 ("/admin/shops/" + str(demo["shop_id"]), "13-admin-shop", "catalogue"),
+                ("/admin/reports", "14-admin-reports", "Platform reports"),
+                ("/admin/products", "15-product-moderation", "Product moderation"),
             ]:
                 page.goto(BASE + path)
                 page.wait_for_load_state("networkidle")

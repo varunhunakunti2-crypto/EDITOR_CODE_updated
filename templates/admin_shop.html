@@ -29,6 +29,7 @@
     {% endif %}
     <form method="POST" action="{{ url_for('admin_shop_verify', owner_id=owner.id) }}" style="margin-top:1rem">
       <input type="hidden" name="verified" value="{{ '0' if profile and profile.verified else '1' }}">
+      <input type="hidden" name="next" value="{{ url_for('admin_shop', owner_id=owner.id) }}">
       <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Revoke verification' if profile and profile.verified else 'Verify shop' }}</button>
     </form>
   </section>

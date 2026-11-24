@@ -138,10 +138,12 @@ def main():
         check(f"{label} login redirects to {expected}", st == 302 and (loc or "").endswith(expected), (st, loc))
 
     for label, op in [("customer", cust_s), ("designer", design_s)]:
-        for path in ["/admin", "/admin/users", "/admin/shops", "/shop", "/shop/products"]:
+        for path in ["/admin", "/admin/users", "/admin/shops", "/admin/reports",
+                     "/admin/products", "/shop", "/shop/products"]:
             st, loc, _ = request(op, path)
             check(f"{label} blocked from {path}", st == 302 and loc.endswith("/dashboard"), (st, loc))
-    for path in ["/admin", "/admin/users", "/admin/shops", "/shop", "/shop/products"]:
+    for path in ["/admin", "/admin/users", "/admin/shops", "/admin/reports",
+                 "/admin/products", "/shop", "/shop/products"]:
         check("admin can open " + path, request(admin_f, path)[0] == 200)
 
     # --- Products ---------------------------------------------------------

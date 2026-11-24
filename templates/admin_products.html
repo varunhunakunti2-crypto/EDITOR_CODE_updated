@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Product moderation · Admin{% endblock %}
+{% block content %}
+<div class="container page">
+  <div class="page-head">
+    <div>
+      <h1>Product moderation</h1>
+      <p>Flagged listings appear first. Hide them until reviewed, restore them, or remove them permanently.</p>
+    </div>
+    <div class="head-actions">
+      <a href="{{ url_for('admin_reports') }}" class="btn btn-ghost btn-lg">{{ icon('layers') }} Reports</a>
+      <a href="{{ url_for('admin_shops') }}" class="btn btn-primary btn-lg">{{ icon('store') }} Shops</a>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><b>{{ products|length }}</b><span>Products</span></div>
+    <div class="stat"><b>{{ products|selectattr('flagged')|list|length }}</b><span>Flagged</span></div>
+    <div class="stat"><b>{{ products|selectattr('hidden')|list|length }}</b><span>Hidden</span></div>
+    <div class="stat"><b>{{ products|rejectattr('hidden')|list|length }}</b><span>Public</span></div>
+  </div>
+
+  <section class="panel">
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr><th>Product</th><th>Shop</th><th>Price</th><th>Availability</th><th>Moderation</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for p in products %}
+          <tr>
+            <td><b>{{ p.name }}</b><br><span class="sub">{{ p.category or 'Uncategorised' }}</span></td>
+            <td><a href="{{ url_for('admin_shop', owner_id=p.owner_id) }}">{{ p.owner.username }}</a></td>
+            <td>₹{{ '%.2f'|format(p.price) }}</td>
+            <td>{{ p.availability_label }}</td>
+            <td>
+              {% if p.hidden %}<span class="role-badge">Hidden</span>
+              {% elif p.flagged %}<span class="role-badge">{{ icon('alert') }} Flagged</span>
+              {% else %}<span class="role-badge">Public</span>{% endif %}
+            </td>
+            <td>
+              <div class="head-actions" style="gap:6px">
+                {% if p.hidden %}
+                <form method="POST" action="{{ url_for('admin_product_moderate', product_id=p.id) }}">
+                  <input type="hidden" name="action" value="unhide">
+                  <button type="submit" class="btn btn-ghost">{{ icon('check') }} Restore</button>
+                </form>
+                {% else %}
+                <form method="POST" action="{{ url_for('admin_product_moderate', product_id=p.id) }}">
+                  <input type="hidden" name="action" value="hide">
+                  <button type="submit" class="btn btn-ghost">{{ icon('eye') }} Hide</button>
+                </form>
+                {% endif %}
+                <form method="POST" action="{{ url_for('admin_product_moderate', product_id=p.id) }}"
+                      onsubmit="return confirm('Permanently remove {{ p.name }}?');">
+                  <input type="hidden" name="action" value="remove">
+                  <button type="submit" class="btn btn-ghost">{{ icon('x') }} Remove</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6">No products have been listed yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

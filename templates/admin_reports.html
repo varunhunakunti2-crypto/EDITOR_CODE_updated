@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Reports · Admin{% endblock %}
+{% block content %}
+<div class="container page">
+  <div class="page-head">
+    <div>
+      <h1>Platform reports</h1>
+      <p>Counts are calculated from the live database each time this page opens.</p>
+    </div>
+    <div class="head-actions">
+      <a href="{{ url_for('admin_products') }}" class="btn btn-ghost btn-lg">{{ icon('grid') }} Moderation</a>
+      <a href="{{ url_for('admin_dashboard') }}" class="btn btn-primary btn-lg">{{ icon('layers') }} Dashboard</a>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><b>{{ total_users }}</b><span>Users</span></div>
+    <div class="stat"><b>{{ shop_counts.total }}</b><span>Shops</span></div>
+    <div class="stat"><b>{{ product_counts.total }}</b><span>Products</span></div>
+    <div class="stat"><b>{{ design_counts.total }}</b><span>Designs</span></div>
+    <div class="stat"><b>{{ enquiry_counts.total }}</b><span>Enquiries</span></div>
+  </div>
+
+  <div class="feature-grid">
+    <section class="panel">
+      <h2>Users by role</h2>
+      <dl class="details">
+        <div><dt>Total users</dt><dd>{{ total_users }}</dd></div>
+        {% for role, label in role_labels.items() %}
+        <div><dt>{{ label }}</dt><dd>{{ user_counts[role] }}</dd></div>
+        {% endfor %}
+      </dl>
+    </section>
+
+    <section class="panel">
+      <h2>Shops &amp; products</h2>
+      <dl class="details">
+        <div><dt>Shop owners</dt><dd>{{ shop_counts.total }}</dd></div>
+        <div><dt>Verified shops</dt><dd>{{ shop_counts.verified }}</dd></div>
+        <div><dt>Pending shops</dt><dd>{{ shop_counts.pending }}</dd></div>
+        <div><dt>Shops without products</dt><dd>{{ shop_counts.without_products }}</dd></div>
+        <div><dt>Shop profiles</dt><dd>{{ total_profiles }}</dd></div>
+        <div><dt>Products</dt><dd>{{ product_counts.total }}</dd></div>
+        <div><dt>Public products</dt><dd>{{ product_counts.public }}</dd></div>
+        <div><dt>Flagged products</dt><dd>{{ product_counts.flagged }}</dd></div>
+        <div><dt>Hidden products</dt><dd>{{ product_counts.hidden }}</dd></div>
+        {% for value, label in availability_labels.items() %}
+        <div><dt>{{ label }}</dt><dd>{{ availability_counts[value] }}</dd></div>
+        {% endfor %}
+      </dl>
+    </section>
+
+    <section class="panel">
+      <h2>Designs by room type</h2>
+      <dl class="details">
+        <div><dt>Designs</dt><dd>{{ design_counts.total }}</dd></div>
+        {% for key, count in design_counts.room.items() %}
+        <div><dt>{{ room_labels.get(key, key) if key else 'Unspecified' }}</dt><dd>{{ count }}</dd></div>
+        {% endfor %}
+      </dl>
+      <h2 style="margin-top:1.4rem">Designs by style</h2>
+      <dl class="details">
+        {% for key, count in design_counts.style.items() %}
+        <div><dt>{{ style_labels.get(key, key) if key else 'Unspecified' }}</dt><dd>{{ count }}</dd></div>
+        {% endfor %}
+      </dl>
+    </section>
+
+    <section class="panel">
+      <h2>Enquiries</h2>
+      <dl class="details">
+        <div><dt>Enquiries</dt><dd>{{ enquiry_counts.total }}</dd></div>
+        {% for value, label in enquiry_labels.kind.items() %}
+        <div><dt>{{ label }}s</dt><dd>{{ enquiry_counts.kind[value] }}</dd></div>
+        {% endfor %}
+        {% for value, label in enquiry_labels.status.items() %}
+        <div><dt>{{ label }}</dt><dd>{{ enquiry_counts.status[value] }}</dd></div>
+        {% endfor %}
+      </dl>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>Activity</h2>
+    <p class="sub">Pending approvals and the newest records.</p>
+    <div class="activity-grid">
+      <div>
+        <h3>Pending shops</h3>
+        <ul class="activity-list">
+          {% for s in pending_shops %}
+          <li><a href="{{ url_for('admin_shop', owner_id=s.id) }}">{{ s.shop_profile.shop_name if s.shop_profile else s.username }}</a>
+            <span>{{ s.created_at|date }}</span></li>
+          {% else %}
+          <li class="sub">All shops are verified.</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div>
+        <h3>Recent designs</h3>
+        <div class="recent" style="margin-top:.6rem">
+          {% for d in recent_designs %}
+          <a href="{{ url_for('result', design_id=d.id) }}" title="{{ d.prompt }}">
+            <img src="{{ url_for('static', filename='uploads/output/' + d.output_image) }}" alt="{{ d.prompt }}" loading="lazy">
+          </a>
+          {% else %}
+          <p class="sub">No designs yet.</p>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <h3>Recent enquiries</h3>
+        <ul class="activity-list">
+          {% for e in recent_enquiries %}
+          <li><span class="role-badge">{{ e.kind_label }}</span>
+            {{ e.customer.username }} · {{ e.product.name }}
+            <span>{{ e.created_at|date }}</span></li>
+          {% else %}
+          <li class="sub">No enquiries yet.</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

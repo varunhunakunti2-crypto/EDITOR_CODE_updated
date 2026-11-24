@@ -11,7 +11,8 @@
     <div class="head-actions">
       <a href="{{ url_for('admin_users') }}" class="btn btn-ghost btn-lg">{{ icon('user') }} Users</a>
       <a href="{{ url_for('admin_shops') }}" class="btn btn-ghost btn-lg">{{ icon('store') }} Shops</a>
-      <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg">{{ icon('grid') }} My designs</a>
+      <a href="{{ url_for('admin_products') }}" class="btn btn-ghost btn-lg">{{ icon('grid') }} Moderation</a>
+      <a href="{{ url_for('admin_reports') }}" class="btn btn-primary btn-lg">{{ icon('layers') }} Reports</a>
     </div>
   </div>
 
@@ -47,16 +48,44 @@
   </section>
 
   <section class="panel">
-    <h2>Recent designs</h2>
-    <p class="sub">Latest activity across all accounts.</p>
-    <div class="recent" style="margin-top:1rem">
-      {% for d in recent_designs %}
-      <a href="{{ url_for('result', design_id=d.id) }}" title="{{ d.prompt }}">
-        <img src="{{ url_for('static', filename='uploads/output/' + d.output_image) }}" alt="{{ d.prompt }}" loading="lazy">
-      </a>
-      {% else %}
-      <p class="sub">No designs have been created yet.</p>
-      {% endfor %}
+    <h2>Activity</h2>
+    <p class="sub">What needs attention and what happened recently.</p>
+    <div class="activity-grid">
+      <div>
+        <h3>Pending shops</h3>
+        <ul class="activity-list">
+          {% for s in pending_shops %}
+          <li><a href="{{ url_for('admin_shop', owner_id=s.id) }}">{{ s.shop_profile.shop_name if s.shop_profile else s.username }}</a>
+            <span>{{ s.created_at|date }}</span></li>
+          {% else %}
+          <li class="sub">All shops are verified.</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div>
+        <h3>Recent designs</h3>
+        <div class="recent" style="margin-top:.6rem">
+          {% for d in recent_designs %}
+          <a href="{{ url_for('result', design_id=d.id) }}" title="{{ d.prompt }}">
+            <img src="{{ url_for('static', filename='uploads/output/' + d.output_image) }}" alt="{{ d.prompt }}" loading="lazy">
+          </a>
+          {% else %}
+          <p class="sub">No designs yet.</p>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <h3>Recent enquiries</h3>
+        <ul class="activity-list">
+          {% for e in recent_enquiries %}
+          <li><span class="role-badge">{{ e.kind_label }}</span>
+            {{ e.customer.username }} · {{ e.product.name }}
+            <span>{{ e.created_at|date }}</span></li>
+          {% else %}
+          <li class="sub">No enquiries yet.</li>
+          {% endfor %}
+        </ul>
+      </div>
     </div>
   </section>
 </div>
