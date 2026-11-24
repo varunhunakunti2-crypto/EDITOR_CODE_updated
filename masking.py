@@ -46,8 +46,9 @@ def normalize_position(value):
 def parse_coords(value):
     """Return fractional ``(x1, y1, x2, y2)`` or ``None`` if invalid.
 
-    Accepts a comma-separated percentage string such as ``"25,25,75,75"`` or
-    the fractional tuple returned by a previous call. It never raises.
+    Accepts percentages (``"25,25,75,75"``), normalized browser values
+    (``"0.25,0.25,0.75,0.75"``), or the fractional tuple returned by a previous
+    call. It never raises.
     """
     if value is None:
         return None
@@ -69,6 +70,9 @@ def parse_coords(value):
             raw = [float(part.strip()) for part in parts]
         except (TypeError, ValueError):
             return None
+        # Browser drags store normalized 0-1 values; typed form values are 0-100.
+        if all(COORD_MIN <= part <= 1.0 for part in raw):
+            raw = [part * 100.0 for part in raw]
 
     if any(not math.isfinite(part) or part < COORD_MIN or part > COORD_MAX
            for part in raw):

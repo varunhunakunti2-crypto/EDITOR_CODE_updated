@@ -118,13 +118,17 @@ inpainting; the original prompt stays in the database row and the result page
 shows the room summary. Two edit modes are supported:
 
 - **Add one item in a zone** — the existing nine-zone mask
-- **Custom area** — `Custom area` plus four percentages `x1,y1,x2,y2` (0–100)
-  draws a white box on the black mask. The box must cover 1–85% of the image;
-  missing, reversed, out-of-bounds or otherwise invalid coordinates safely fall
-  back to the centre zone. Valid values are stored in `Design.mask_coords`;
-  older rows keep an empty value and continue to open normally. A stray
-  `mask_coords` value is ignored unless `position` is `custom`, so ordinary
-  zones keep their original nine-zone mask.
+- **Custom area** — choose `Custom area` and drag a box directly on the photo
+  preview. `static/JS/region_mask.js` draws a live rectangle, saves normalized
+  `x1,y1,x2,y2` values (0–1) in the hidden `mask_coords` field, and offers a
+  **Clear selection** button. Tiny drags are rejected with a friendly message;
+  the box must cover 1–85% of the image. The server accepts both normalized and
+  0–100 percentage values; missing, reversed, out-of-bounds or otherwise invalid
+  coordinates fall back to the centre zone. Valid values are stored in
+  `Design.mask_coords`; older rows keep an empty value and continue to open
+  normally. Selecting a preset clears the custom coordinates, so ordinary zones
+  keep their original nine-zone mask. The legacy `static/JS/mask.js` is unused
+  and unchanged.
 - **Redesign the whole room** — a fully white mask (`whole_room` position)
 
 Masks are saved as lossless PNGs: the selected area is exactly white and every
@@ -236,9 +240,9 @@ gitignored.
 Start the app first (`python app.py`), then run the suites from the project folder:
 
     python tests/smoke_test.py       # 165 HTTP/DB checks, standard library only
-    python tests/browser_check.py    # 50 real-browser checks + 26 screenshots
+    python tests/browser_check.py    # 57 real-browser checks + 26 screenshots
     python tests/room_analysis_check.py  # OpenCV measurement checks, no server needed
-    python tests/backend_check.py    # 48 in-process API/DB checks, stubbed AI, no server needed
+    python tests/backend_check.py    # 51 in-process API/DB checks, stubbed AI, no server needed
     python tests/flow_check.py       # full analyze -> design -> result flow in a browser
     python tests/shop_flow_check.py  # shop register -> verify -> catalogue/edit/enquiry flow
     python tests/admin_check.py      # verification, moderation and report counts, no server needed
@@ -256,15 +260,17 @@ screen, exercise drag-and-drop placement, check for console errors and failed
 requests, and regenerate the screenshots below. It also walks through all six
 steps of the project PDF (login, room upload, CV measurement, design generation,
 interactive furniture with rotation, and product/shop connection) as each of the
-four roles, checks the custom-area control and live preview, and writes a
-screenshot for every customer step plus one per other role.
+four roles, checks the custom-area control, drag-select overlay, live box,
+normalized hidden field, tiny-drag rejection, clear button and preset switching,
+and writes a screenshot for every customer step plus one per other role.
 `room_analysis_check.py` generates three
 synthetic rooms with known dimensions, checks the measured size, overlays and
 manual overrides, and also analyses any uploaded room photos.
 `backend_check.py` posts a design with every new field, verifies the DB row and
 result page, checks the whole-room mask, validates custom coordinates (missing,
 too small, out of bounds and reversed), confirms the custom mask and its
-fallback, stores normalised coordinates in `mask_coords`, inspects the saved PNG
+fallback (including normalized 0–1 browser values), stores normalised
+coordinates in `mask_coords`, inspects the saved PNG
 pixel by pixel to confirm white only in the chosen box (and black everywhere
 else), verifies that stray coords never replace an ordinary nine-zone mask,
 checks that `upgrade_schema()` is idempotent, and exercises placement guards
@@ -293,11 +299,11 @@ Verified with the app running at `http://localhost:5000` and the local inpaintin
 model loaded (`/model-status` reports `runwayml/stable-diffusion-inpainting`):
 
 - `python tests/smoke_test.py` — **165 passed, 0 failed**.
-- `python tests/browser_check.py` — **50 passed, 0 failed**, with zero browser
+- `python tests/browser_check.py` — **57 passed, 0 failed**, with zero browser
   console errors and zero failed requests.
-- `python tests/backend_check.py` — **48 passed, 0 failed**, including custom
-  coordinate validation, storage, pixel-exact PNG masks, preserved nine-zone
-  masks and idempotent schema upgrade.
+- `python tests/backend_check.py` — **51 passed, 0 failed**, including custom
+  coordinate validation, normalized browser values, storage, pixel-exact PNG
+  masks, preserved nine-zone masks and idempotent schema upgrade.
 - Manual six-step click-through in a real browser as a customer: register/login →
   upload a room photo → **Analyze room** (overlay plus editable 6.16 × 8.01 × 2.8 m
   estimate) → generate a design → add, rotate, save and reload furniture → open

@@ -114,11 +114,15 @@
           {% endfor %}
         </div>
         <div class="field" id="customCoords" hidden>
-          <label for="mask_coords">Custom area (x1,y1,x2,y2)</label>
-          <input class="input" type="text" id="mask_coords" name="mask_coords" maxlength="60"
-                 inputmode="decimal" placeholder="e.g. 25,25,75,75">
-          <p class="hint">Four percentages from 0 to 100, left/top then right/bottom.
-            The box must cover 1–85% of the photo; invalid values use the centre zone.</p>
+          <label>Custom area — drag a box on the photo preview</label>
+          <input type="hidden" id="mask_coords" name="mask_coords">
+          <p class="hint region-readout" id="coordsReadout">None — drag on the photo to choose an area.</p>
+          <div class="region-actions">
+            <button type="button" class="btn btn-ghost" id="clearRegion">Clear selection</button>
+            <span class="hint" id="regionStatus" role="status" aria-live="polite">No custom area selected; the centre zone will be used.</span>
+          </div>
+          <p class="hint">Normalized coordinates (0–1) are saved automatically. The box must
+            cover 1–85% of the photo; very small drags are ignored.</p>
         </div>
         </div>
       </section>
@@ -150,6 +154,7 @@
         <div class="stage-empty">{{ icon('image') }}<p>Your photo will appear here with the placement zone marked.</p></div>
         <img id="previewImg" alt="Preview of your uploaded room" hidden>
         <div class="zone" id="zone"><span>Object goes here</span></div>
+        <canvas id="regionCanvas" aria-label="Drag to select a custom area"></canvas>
       </div>
       <p class="stage-note">Your photo is resized to a square for the AI, so the preview shows the same crop.</p>
     </aside>
@@ -166,6 +171,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='JS/region_mask.js') }}"></script>
 <script>
 (function(){
   const input = document.getElementById('imageInput');
@@ -198,9 +204,7 @@
 
   // ---- Placement positions (kept in sync with masking.py) ----
   const IMG = 512, ZW = 150, ZH = 130, M = 26;
-  const MIN_AREA = 1, MAX_AREA = 85;   // percent of the image; see masking.py
   const zone = document.getElementById('zone');
-  const coordsInput = document.getElementById('mask_coords');
   const customRow = document.getElementById('customCoords');
   const axis = (i, len) => i === 0 ? M : (i === 1 ? (IMG - len) / 2 : IMG - M - len);
   const COLS = {left:0, center:1, right:2}, ROWS = {top:0, middle:1, bottom:2};
@@ -212,35 +216,40 @@
     zone.style.height = height + '%';
     zone.classList.toggle('flip', !!flip);  // keep the label inside the photo
   }
-  function parseCustom(text){
-    if(!text) return null;
-    const parts = text.split(',').map(p => p.trim());
-    if(parts.length !== 4 || parts.some(p => !p)) return null;
-    const v = parts.map(Number);
-    if(v.some(n => !Number.isFinite(n) || n < 0 || n > 100)) return null;
-    const [x1, y1, x2, y2] = v;
-    if(x2 <= x1 || y2 <= y1) return null;
-    const area = (x2 - x1) * (y2 - y1) / 100;
-    if(area < MIN_AREA || area > MAX_AREA) return null;
-    return v;
-  }
-  function placeZone(value){
-    customRow.hidden = value !== 'custom';
-    if(value === 'custom'){
-      const c = parseCustom(coordsInput.value);
-      if(c){ setZone(c[0], c[1], c[2] - c[0], c[3] - c[1], false); return; }
-      value = 'middle_center';
-    }
-    if(value === 'whole_room') value = 'middle_center';
+  function presetZone(value){
+    if(value === 'custom' || value === 'whole_room') value = 'middle_center';
     const [row, col] = value.split('_');
     const x = axis(COLS[col], ZW), y = axis(ROWS[row], ZH);
     setZone(100 * x / IMG, 100 * y / IMG, 100 * ZW / IMG, 100 * ZH / IMG,
             row === 'bottom');
   }
-  coordsInput.addEventListener('input', () => {
-    if(document.querySelector('input[name=position]:checked').value === 'custom')
-      placeZone('custom');
+
+  // Drag-select overlay; normalized coords live in the hidden mask_coords field.
+  const region = new window.RegionMask({
+    canvas: document.getElementById('regionCanvas'),
+    field: document.getElementById('mask_coords'),
+    readout: document.getElementById('coordsReadout'),
+    status: document.getElementById('regionStatus'),
+    clearButton: document.getElementById('clearRegion'),
+    stage: stage,
+    onChange: box => setZone(box[0] * 100, box[1] * 100,
+                             (box[2] - box[0]) * 100, (box[3] - box[1]) * 100, false),
+    onReset: () => presetZone('middle_center'),
   });
+
+  function placeZone(value){
+    const custom = value === 'custom';
+    customRow.hidden = !custom;
+    region.setEnabled(custom);
+    if(custom){
+      if(region.coords) region.repaint();
+      else presetZone('middle_center');
+      return;
+    }
+    // Switching to a preset ignores any custom coordinates.
+    if(region.coords) region.clear();
+    presetZone(value);
+  }
   document.querySelectorAll('input[name=position]').forEach(r => {
     r.addEventListener('change', () => placeZone(r.value));
     if (r.checked) placeZone(r.value);
@@ -248,8 +257,10 @@
 
   document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', () => {
     const whole = document.querySelector('input[name=mode]:checked').value === 'whole';
+    const custom = document.querySelector('input[name=position]:checked').value === 'custom';
     document.getElementById('zoneControls').hidden = whole;
     zone.hidden = whole;
+    region.setEnabled(!whole && custom);
   }));
 
   // ---- Measure room: POST the photo to /api/analyze-room ----

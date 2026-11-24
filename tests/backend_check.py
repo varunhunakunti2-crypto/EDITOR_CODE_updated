@@ -169,6 +169,9 @@ check('valid coords parse to fractions',
       parse_coords(' 25, 25, 75, 75 '))
 check('parsed tuple is accepted again',
       parse_coords(parse_coords('25,25,75,75')) == (0.25, 0.25, 0.75, 0.75))
+check('normalized 0-1 string parses like percentages',
+      parse_coords('0.25,0.25,0.75,0.75') == (0.25, 0.25, 0.75, 0.75),
+      parse_coords('0.25,0.25,0.75,0.75'))
 for label, value in [
     ('missing', None), ('empty', ''), ('partial', '25,25,75'),
     ('non numeric', 'a,25,75,75'), ('out of bounds', '-1,25,75,75'),
@@ -227,7 +230,9 @@ check('design form exposes new fields', res.status_code == 200 and all(
                               'name="preferences"', 'name="width_m"', 'name="length_m"',
                               'name="height_m"', 'name="detection_notes"',
                               'value="whole"', 'value="custom"', 'Custom area',
-                               'name="mask_coords"', 'api/analyze-room')))
+                               'type="hidden" id="mask_coords"', 'id="regionCanvas"',
+                               'id="clearRegion"', 'JS/region_mask.js',
+                               'api/analyze-room')))
 
 res = client.post('/design', data={
     'image': (io.BytesIO(IMAGE), 'room.jpg'),
@@ -314,6 +319,29 @@ if custom_design:
           mask_is_exact(mask, (128, 128, 383, 383)))
     html = client.get('/design/%d' % custom_design.id).get_data(as_text=True)
     check('result page labels custom area', 'custom area' in html.lower())
+
+# The browser drag editor posts normalized 0-1 coords in the hidden field.
+res = client.post('/design', data={
+    'image': (io.BytesIO(IMAGE), 'drag.jpg'),
+    'prompt': 'a dragged area bookshelf', 'position': 'custom',
+    'mask_coords': '0.25,0.25,0.75,0.75', 'mode': 'zone',
+}, content_type='multipart/form-data')
+with web.app.app_context():
+    drag_design = Design.query.filter_by(prompt='a dragged area bookshelf').order_by(
+        Design.id.desc()).first()
+    DESIGN_IDS.append(drag_design.id if drag_design else None)
+    if drag_design:
+        DESIGN_FILES.append((drag_design.input_image, drag_design.mask_image,
+                             drag_design.output_image))
+check('normalized hidden field posts correctly',
+      res.status_code == 302 and bool(drag_design)
+      and drag_design.position == 'custom'
+      and drag_design.mask_coords == '25,25,75,75',
+      (res.status_code, drag_design.mask_coords if drag_design else None))
+if drag_design:
+    mask = Image.open(os.path.join(ROOT, 'static', 'uploads', 'mask',
+                                   drag_design.mask_image))
+    check('dragged mask PNG matches box', mask_is_exact(mask, (128, 128, 383, 383)))
 
 res = client.post('/design', data={
     'image': (io.BytesIO(IMAGE), 'fallback.jpg'),

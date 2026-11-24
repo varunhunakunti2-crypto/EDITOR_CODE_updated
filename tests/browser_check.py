@@ -181,12 +181,49 @@ def pdf_walkthrough(page, demo, role, username, capture=False):
     check(tag + " 2 upload form", page.locator("input[type=file][name=image]").count() == 1
           and page.locator("#prompt").count() == 1)
     if role == "customer":
+        check(tag + " 2 default preset",
+              page.locator('input[name=position][value=middle_center]').is_checked())
+        check(tag + " 2 custom option",
+              page.locator('input[name=position][value=custom]').count() == 1)
+        page.set_input_files('input[name=image]', 'sample.jpg')
+        page.wait_for_selector('#stage.has-image')
         page.locator('input[name=position][value=custom]').check()
         check(tag + " 2 custom area control", page.locator("#customCoords").is_visible())
-        page.fill("#mask_coords", "25,25,75,75")
-        check(tag + " 2 custom preview",
+        canvas = page.locator("#regionCanvas")
+        check(tag + " 2 canvas overlay", canvas.is_visible())
+        box = canvas.bounding_box()
+
+        def drag(x1, y1, x2, y2):
+            page.mouse.move(box["x"] + box["width"] * x1,
+                            box["y"] + box["height"] * y1)
+            page.mouse.down()
+            page.mouse.move(box["x"] + box["width"] * x2,
+                            box["y"] + box["height"] * y2, steps=6)
+
+        drag(0.25, 0.25, 0.75, 0.75)
+        check(tag + " 2 live drag box",
               page.locator("#zone").evaluate("el => el.style.width") == "50%")
+        page.mouse.up()
+        check(tag + " 2 normalized coords saved",
+              page.input_value("#mask_coords") == "0.25,0.25,0.75,0.75",
+              page.input_value("#mask_coords"))
+        drag(0.4, 0.4, 0.405, 0.405)
+        page.mouse.up()
+        check(tag + " 2 tiny drag rejected",
+              "too small" in page.locator("#regionStatus").inner_text().lower()
+              and not page.input_value("#mask_coords"),
+              page.locator("#regionStatus").inner_text())
+        drag(0.25, 0.25, 0.75, 0.75)
+        page.mouse.up()
+        page.click("#clearRegion")
+        check(tag + " 2 clear selection",
+              not page.input_value("#mask_coords")
+              and page.locator("#zone").evaluate("el => el.style.width") != "50%")
+        drag(0.25, 0.25, 0.75, 0.75)
+        page.mouse.up()
         page.locator('input[name=position][value=middle_center]').check()
+        check(tag + " 2 preset ignores custom",
+              not page.input_value("#mask_coords") and not canvas.is_visible())
     if capture:
         shot(page, "19-step2-upload")
 
