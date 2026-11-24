@@ -221,6 +221,15 @@ def pdf_walkthrough(page, demo, role, username, capture=False):
               and page.locator("#zone").evaluate("el => el.style.width") != "50%")
         drag(0.25, 0.25, 0.75, 0.75)
         page.mouse.up()
+        check(tag + " 2 drag-select interaction",
+              page.input_value("#mask_coords") == "0.25,0.25,0.75,0.75"
+              and page.locator("#zone").evaluate("el => el.style.width") == "50%"
+              and "too small" not in page.locator("#regionStatus").inner_text().lower(),
+              (page.input_value("#mask_coords"),
+               page.locator("#zone").evaluate("el => el.style.width")))
+        shot(page, "14-custom-area")
+        shot_path = os.path.join("docs", "screenshots", "14-custom-area.png")
+        check(tag + " 2 custom area screenshot", os.path.isfile(shot_path), shot_path)
         page.locator('input[name=position][value=middle_center]').check()
         check(tag + " 2 preset ignores custom",
               not page.input_value("#mask_coords") and not canvas.is_visible())

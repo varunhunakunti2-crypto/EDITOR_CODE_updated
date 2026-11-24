@@ -242,8 +242,8 @@ gitignored.
 
 Start the app first (`python app.py`), then run the suites from the project folder:
 
-    python tests/smoke_test.py       # 166 HTTP/DB checks, standard library only
-    python tests/browser_check.py    # 62 real-browser checks + 26 screenshots
+    python tests/smoke_test.py       # 170 HTTP/DB checks, standard library only
+    python tests/browser_check.py    # 64 real-browser checks + 27 screenshots
     python tests/room_analysis_check.py  # OpenCV measurement checks, no server needed
     python tests/backend_check.py    # 52 in-process API/DB checks, stubbed AI, no server needed
     python tests/flow_check.py       # full analyze -> design -> result flow in a browser
@@ -255,7 +255,8 @@ Start the app first (`python app.py`), then run the suites from the project fold
 new route for all four roles, the design schema fields (including `mask_coords`),
 that the eight oldest designs still open with blank coordinates after the
 migration and show no custom-area UI, the analysis API (including manual
-overrides and errors), design
+overrides and errors), four custom-mask HTTP cases (valid coordinates, missing
+coordinates, too-small box and preset with a stray coordinate), design
 result fields, placement save/load with
 rotation, shop verification/revocation, product edit/availability, enquiry details
 and flagging, plus product upload/list/detail/delete, catalogue access, admin lists
@@ -266,8 +267,9 @@ steps of the project PDF (login, room upload, CV measurement, design generation,
 interactive furniture with rotation, and product/shop connection) as each of the
 four roles, checks the custom-area control, drag-select overlay, live box,
 normalized hidden field, tiny-drag rejection, clear button and preset switching,
-checks the custom-area result label and mask overlay toggle, and writes a
-screenshot for every customer step plus one per other role.
+checks the custom-area result label and mask overlay toggle, and writes
+`docs/screenshots/14-custom-area.png` plus a screenshot for every customer step
+and one per other role.
 `room_analysis_check.py` generates three
 synthetic rooms with known dimensions, checks the measured size, overlays and
 manual overrides, and also analyses any uploaded room photos.
@@ -303,9 +305,11 @@ filter and backfilled by `upgrade_schema()` on startup.
 Verified with the app running at `http://localhost:5000` and the local inpainting
 model loaded (`/model-status` reports `runwayml/stable-diffusion-inpainting`):
 
-- `python tests/smoke_test.py` — **166 passed, 0 failed**.
-- `python tests/browser_check.py` — **62 passed, 0 failed**, with zero browser
-  console errors and zero failed requests.
+- `python tests/smoke_test.py` — **170 passed, 0 failed**, including all original
+  assertions plus the four custom-mask cases.
+- `python tests/browser_check.py` — **64 passed, 0 failed**, with zero browser
+  console errors and zero failed requests, including the drag-select interaction
+  and `14-custom-area.png`.
 - `python tests/backend_check.py` — **52 passed, 0 failed**, including custom
   coordinate validation, normalized browser values, storage, pixel-exact PNG
   masks, the custom result label/overlay, preserved nine-zone masks and
@@ -339,6 +343,7 @@ rotated item) into `docs/screenshots/`:
 | Admin shops | ![Admin shops](docs/screenshots/12-admin-shops.png) |
 | Admin shop catalogue | ![Admin shop](docs/screenshots/13-admin-shop.png) |
 | Admin reports | ![Admin reports](docs/screenshots/14-admin-reports.png) |
+| Custom area drag-select | ![Custom area](docs/screenshots/14-custom-area.png) |
 | Product moderation | ![Moderation](docs/screenshots/15-product-moderation.png) |
 | My enquiries | ![My enquiries](docs/screenshots/16-my-enquiries.png) |
 | Rotated placement | ![Rotated placement](docs/screenshots/17-result-rotated.png) |

@@ -89,7 +89,7 @@ def main():
         print("Server is not reachable at " + BASE)
         return 1
 
-    created_users, product_images = [], []
+    created_users, product_images, design_files = [], [], []
 
     # --- Public pages and health -----------------------------------------
     anon, anon_strict = openers()
@@ -201,6 +201,64 @@ def main():
           request(cust_s, "/api/analyze-room", body, ctype)[0] == 400)
     check("anonymous analysis blocked", request(anon_strict, "/api/analyze-room",
           body, ctype)[0] == 302)
+
+    # --- Custom masks over HTTP -------------------------------------------
+    def post_custom_design(fields, filename, prompt):
+        body, ctype = multipart(dict(fields, prompt=prompt), filename, photo)
+        st, loc, _ = request(cust_s, "/design", body, ctype)
+        design_id = None
+        if st == 302 and loc:
+            try:
+                design_id = int(loc.rstrip("/").split("/")[-1])
+            except ValueError:
+                pass
+        row = None
+        if design_id:
+            with sqlite3.connect(DB) as con:
+                row = con.execute(
+                    "SELECT position, mask_coords, input_image, mask_image, "
+                    "output_image FROM design WHERE id=?", (design_id,)).fetchone()
+            if row:
+                design_files.extend([row[2], row[3], row[4]])
+        html = request(cust_f, "/design/" + str(design_id))[2] if design_id else ""
+        return st, loc, row, html
+
+    st, loc, row, html = post_custom_design(
+        {"position": "custom", "mask_coords": "0.25,0.25,0.75,0.75",
+         "mode": "zone"}, "smoke-custom.jpg", "smoke valid custom mask")
+    check("smoke valid custom mask",
+          st == 302 and bool(row) and row[0] == "custom"
+          and row[1] == "25,25,75,75"
+          and os.path.isfile(os.path.join("static", "uploads", "mask", row[3]))
+          and "Custom area edited" in html and "mask-overlay" in html,
+          (st, loc, row[:2] if row else None))
+
+    st, loc, row, html = post_custom_design(
+        {"position": "custom", "mode": "zone"},
+        "smoke-missing.jpg", "smoke missing coords fallback")
+    check("smoke missing coords fallback",
+          st == 302 and bool(row) and row[0] == "middle_center"
+          and row[1] == "" and "Custom area was invalid" in html
+          and "Custom area edited" not in html and "mask-overlay" not in html,
+          (st, loc, row[:2] if row else None))
+
+    st, loc, row, html = post_custom_design(
+        {"position": "custom", "mask_coords": "40,40,45,45", "mode": "zone"},
+        "smoke-small.jpg", "smoke too-small box fallback")
+    check("smoke too-small box fallback",
+          st == 302 and bool(row) and row[0] == "middle_center"
+          and row[1] == "" and "Custom area was invalid" in html
+          and "mask-overlay" not in html,
+          (st, loc, row[:2] if row else None))
+
+    st, loc, row, html = post_custom_design(
+        {"position": "top_left", "mask_coords": "25,25,75,75", "mode": "zone"},
+        "smoke-preset.jpg", "smoke preset position still works")
+    check("smoke preset position still works",
+          st == 302 and bool(row) and row[0] == "top_left" and row[1] == ""
+          and "placed at <strong>top left</strong>" in html
+          and "Custom area edited" not in html and "mask-overlay" not in html,
+          (st, loc, row[:2] if row else None))
 
     # A design row with all new fields: result page + placement persistence.
     with sqlite3.connect(DB) as con:
@@ -459,6 +517,13 @@ def main():
             os.remove(os.path.join("static", "uploads", "products", name))
         except OSError:
             pass
+    for name in design_files:
+        for prefix in (os.path.join("static", "uploads"), "uploads"):
+            for folder in ("input", "mask", "output"):
+                try:
+                    os.remove(os.path.join(prefix, folder, name))
+                except OSError:
+                    pass
 
     print("\nSUMMARY:", len(PASS), "passed,", len(FAIL), "failed")
     if FAIL:
