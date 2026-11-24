@@ -127,6 +127,7 @@ Start the app first (`python app.py`), then run the suites from the project fold
     python tests/browser_check.py    # 12 real-browser checks + screenshot generator
     python tests/room_analysis_check.py  # OpenCV measurement checks, no server needed
     python tests/backend_check.py    # in-process API/DB checks, stubbed AI, no server needed
+    python tests/flow_check.py       # full analyze -> design -> result flow in a browser
 
 `smoke_test.py` verifies public pages, role-based redirects and guards for all four
 roles, product upload/list/detail/delete, catalogue access, admin lists and file
@@ -137,7 +138,9 @@ synthetic rooms with known dimensions, checks the measured size, overlays and
 manual overrides, and also analyses any uploaded room photos.
 `backend_check.py` posts a design with every new field, verifies the DB row and
 result page, checks the whole-room mask, and exercises placement guards with a
-stubbed pipeline (no diffusion or API keys needed).
+stubbed pipeline (no diffusion or API keys needed). `flow_check.py` drives the
+whole room-analysis → design → result journey in Chromium with real inpainting
+(slower, ~1 minute), then removes its demo account and design.
 
     pip install playwright && python -m playwright install chromium
 

@@ -197,7 +197,7 @@ check('generation prompt combines fields', FakePipeline.last_prompt and all(
 
 res = client.get('/design/%d' % d.id)
 html = res.get_data(as_text=True)
-wanted_page = ('a walnut bookshelf', 'Living Room', '₹50,000',
+wanted_page = ('a walnut bookshelf', 'Living room', '₹50,000',
                'pet friendly, warm colours', 'W 5.25 m',
                'Confidence: high', 'Save placement')
 missing = [text for text in wanted_page if text not in html]

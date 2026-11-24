@@ -59,10 +59,22 @@
   <section class="panel room-details">
     <h2>Room details</h2>
     <ul class="room-summary">
-      {% if room_summary %}<li>{{ room_summary }}</li>{% endif %}
+      {% if d.room_type %}<li>Room: {{ room_types.get(d.room_type, d.room_type) }}</li>{% endif %}
+      {% if d.style %}<li>Style: {{ styles.get(d.style, d.style) }}</li>{% endif %}
+      {% if d.budget %}<li>Budget: {{ d.budget }}</li>{% endif %}
+      {% if d.width_m or d.length_m or d.height_m %}
+      <li>Detected dimensions:
+        {% if d.width_m %}W {{ '%.2f'|format(d.width_m) }} m{% endif %}
+        {% if d.length_m %} · L {{ '%.2f'|format(d.length_m) }} m{% endif %}
+        {% if d.height_m %} · H {{ '%.2f'|format(d.height_m) }} m{% endif %}
+      </li>
+      {% endif %}
       {% if d.preferences %}<li>Preferences: {{ d.preferences }}</li>{% endif %}
       {% if d.detection_notes %}<li>{{ d.detection_notes }}</li>{% endif %}
     </ul>
+    <p class="notice">Dimensions are estimated from a single photo using a reference
+      object, so treat them as approximate. Verify important measurements manually
+      before ordering furniture.</p>
   </section>
   {% endif %}
 

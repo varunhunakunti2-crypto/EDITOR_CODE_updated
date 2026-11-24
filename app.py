@@ -635,6 +635,7 @@ def result(design_id):
                            room_summary=describe_room(
                                d.room_type, d.style, d.budget,
                                d.width_m, d.length_m, d.height_m),
+                           room_types=ROOM_TYPES, styles=STYLES,
                            position_label=masking.LABELS.get(d.position, 'Centre'),
                            furniture=furniture)
 

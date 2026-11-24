@@ -54,7 +54,7 @@
           <textarea class="textarea" name="preferences" maxlength="500" rows="2" placeholder="e.g. low maintenance, pet friendly, warm colours"></textarea>
         </label>
         <div class="field-row measure-row">
-          <button type="button" class="btn btn-ghost" id="measureBtn">{{ icon('target') }} Measure room</button>
+          <button type="button" class="btn btn-ghost" id="measureBtn">{{ icon('target') }} Analyze room</button>
           <span class="hint" id="measureStatus" role="status" aria-live="polite">Upload a photo, then measure it.</span>
         </div>
         <div class="field-row dims-row">
@@ -62,6 +62,7 @@
           <label>Length (m)<input class="input" type="number" name="length_m" id="lengthM" min="0.1" max="100" step="0.01" placeholder="auto"></label>
           <label>Height (m)<input class="input" type="number" name="height_m" id="heightM" min="0.1" max="100" step="0.01" placeholder="auto"></label>
         </div>
+        <p class="hint" id="detectedSummary" hidden></p>
         <input type="hidden" name="detection_notes" id="detectionNotes">
         <img id="analysisOverlay" alt="Room measurement overlay" hidden>
       </section>
@@ -224,7 +225,7 @@
     const pixels = document.getElementById('referencePixels').value.trim();
     if (pixels) fd.append('reference_pixels', pixels);
     measureBtn.disabled = true;
-    measureStatus.textContent = 'Measuring walls and reference length...';
+    measureStatus.textContent = 'Analyzing walls and reference length...';
     try {
       const res = await fetch('{{ url_for("api_analyze_room") }}',
         { method:'POST', body:fd, credentials:'same-origin' });
@@ -238,8 +239,11 @@
       const overlay = document.getElementById('analysisOverlay');
       overlay.src = data.overlay_url + '?t=' + Date.now();
       overlay.hidden = false;
-      measureStatus.textContent = 'Measured ' + data.width_m + ' × ' + data.length_m +
-        ' × ' + data.height_m + ' m (' + data.confidence + ' confidence). Check the values above.';
+      const summary = document.getElementById('detectedSummary');
+      summary.textContent = 'Detected: ' + data.width_m + ' × ' + data.length_m +
+        ' × ' + data.height_m + ' m · ' + data.confidence + ' confidence. Edit any value above.';
+      summary.hidden = false;
+      measureStatus.textContent = 'Analyzed room. Check the editable dimensions above.';
     } catch (err) {
       measureStatus.textContent = err.message || 'Could not measure this photo.';
     } finally {
