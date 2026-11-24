@@ -137,7 +137,10 @@ shows the room summary. Three edit modes are supported:
 | Presets | switching to any preset clears the custom coordinates and uses its original nine-zone mask |
 
 Masks are saved as lossless PNGs: the selected area is exactly white and every
-pixel outside it is black. A custom-area result is labelled **Custom area edited**
+pixel outside it is black. Generated pixels are pasted back through that mask, so
+everything beyond the white box keeps the original photo's pixels; only JPEG
+edge bleed can affect a few pixels right at the boundary. A custom-area result
+is labelled **Custom area edited**
 and the Before/After comparison shows the mask over the original photo, with a
 button to hide or show it. Older designs keep their original result layout with
 no custom label or mask overlay. The legacy `static/JS/mask.js` is unused and
@@ -251,7 +254,7 @@ Start the app first (`python app.py`), then run the suites from the project fold
     python tests/smoke_test.py       # 170 HTTP/DB checks, standard library only
     python tests/browser_check.py    # 64 real-browser checks + 27 screenshots
     python tests/room_analysis_check.py  # OpenCV measurement checks, no server needed
-    python tests/backend_check.py    # 52 in-process API/DB checks, stubbed AI, no server needed
+    python tests/backend_check.py    # 54 in-process API/DB checks, stubbed AI, no server needed
     python tests/flow_check.py       # full analyze -> design -> result flow in a browser
     python tests/shop_flow_check.py  # shop register -> verify -> catalogue/edit/enquiry flow
     python tests/admin_check.py      # verification, moderation and report counts, no server needed
@@ -316,10 +319,13 @@ model loaded (`/model-status` reports `runwayml/stable-diffusion-inpainting`):
 - `python tests/browser_check.py` — **64 passed, 0 failed**, with zero browser
   console errors and zero failed requests, including the drag-select interaction
   and `14-custom-area.png`.
-- `python tests/backend_check.py` — **52 passed, 0 failed**, including custom
+- `python tests/backend_check.py` — **54 passed, 0 failed**, including custom
   coordinate validation, normalized browser values, storage, pixel-exact PNG
-  masks, the custom result label/overlay, preserved nine-zone masks and
-  idempotent schema upgrade.
+  masks, proof that generated pixels stay inside the white box, the custom
+  result label/overlay, preserved nine-zone masks and idempotent schema upgrade.
+- Final browser acceptance: drag a small box → **a red sofa** → only that box
+  changes; the **Centre** preset reproduces the original fixed zone; the eight
+  oldest designs still open with no custom-area UI.
 - Manual six-step click-through in a real browser as a customer: register/login →
   upload a room photo → **Analyze room** (overlay plus editable 6.16 × 8.01 × 2.8 m
   estimate) → generate a design → add, rotate, save and reload furniture → open

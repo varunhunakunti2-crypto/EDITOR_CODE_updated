@@ -43,6 +43,8 @@ class FakePipeline:
 
     def __call__(self, prompt, image, mask_image, **kwargs):
         FakePipeline.last_prompt = prompt
+        if 'paint red' in prompt:
+            return SimpleNamespace(images=[Image.new('RGB', image.size, (255, 0, 0))])
         return SimpleNamespace(images=[image.copy()])
 
 
@@ -345,6 +347,49 @@ if drag_design:
     mask = Image.open(os.path.join(ROOT, 'static', 'uploads', 'mask',
                                    drag_design.mask_image))
     check('dragged mask PNG matches box', mask_is_exact(mask, (128, 128, 383, 383)))
+
+# Even a generation that paints the whole canvas must be clipped to the mask.
+res = client.post('/design', data={
+    'image': (io.BytesIO(IMAGE), 'painted.jpg'),
+    'prompt': 'paint red inside the custom box', 'position': 'custom',
+    'mask_coords': '25,25,75,75', 'mode': 'zone',
+}, content_type='multipart/form-data')
+with web.app.app_context():
+    painted = Design.query.filter_by(prompt='paint red inside the custom box').order_by(
+        Design.id.desc()).first()
+    DESIGN_IDS.append(painted.id if painted else None)
+    if painted:
+        DESIGN_FILES.append((painted.input_image, painted.mask_image,
+                             painted.output_image))
+check('masked generation saved', res.status_code == 302 and bool(painted),
+      (res.status_code, painted.position if painted else None))
+if painted:
+    uploads = os.path.join(ROOT, 'static', 'uploads')
+    src = Image.open(os.path.join(uploads, 'input', painted.input_image)).convert('RGB')
+    out = Image.open(os.path.join(uploads, 'output', painted.output_image)).convert('RGB')
+    gray = Image.open(os.path.join(uploads, 'mask', painted.mask_image)).convert('L')
+    sp, op, mp = src.load(), out.load(), gray.load()
+    # JPEG encoding bleeds a few pixels across a hard red/beige edge, so sample
+    # away from the box border; the compositing itself is exact before saving.
+    x1, y1, x2, y2 = 128, 128, 383, 383
+    margin = 8
+    inside_bad, outside_bad = [], []
+    for y in range(src.height):
+        for x in range(src.width):
+            if (abs(x - x1) <= margin or abs(x - x2) <= margin
+                    or abs(y - y1) <= margin or abs(y - y2) <= margin):
+                continue
+            if mp[x, y] > 127:
+                red, green, blue = op[x, y]
+                if not (red > 200 and green < 60 and blue < 60):
+                    inside_bad.append((x, y, op[x, y]))
+            elif op[x, y] != sp[x, y]:
+                outside_bad.append((x, y, sp[x, y], op[x, y]))
+    inside_ok, outside_ok = not inside_bad, not outside_bad
+    check('generated pixels stay inside the white box', inside_ok and outside_ok,
+          {'inside_bad': len(inside_bad), 'outside_bad': len(outside_bad),
+           'first_inside': inside_bad[:2], 'first_outside': outside_bad[:2],
+           'center': op[256, 256]})
 
 res = client.post('/design', data={
     'image': (io.BytesIO(IMAGE), 'fallback.jpg'),

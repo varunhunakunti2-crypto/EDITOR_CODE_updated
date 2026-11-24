@@ -944,8 +944,14 @@ def design():
                         num_inference_steps=config.SD_STEPS,
                     )
                 
-                # Get result image
-                edited_image = result.images[0]
+                # Get result image. The VAE decoder can drift outside the white
+                # mask, so paste only the generated pixels back onto the original
+                # photo; everything outside the box stays pixel-identical.
+                generated = result.images[0].convert("RGB")
+                if generated.size != init_image.size:
+                    generated = generated.resize(init_image.size)
+                edited_image = init_image.copy()
+                edited_image.paste(generated, (0, 0), mask_image.convert("L"))
                 output_filename = f"output_{filename}"
                 output_path = os.path.join(app.config['UPLOAD_FOLDER'], 'output', output_filename)
                 edited_image.save(output_path)
