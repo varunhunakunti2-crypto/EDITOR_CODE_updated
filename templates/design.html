@@ -23,8 +23,51 @@
         </label>
       </section>
 
+      <section class="panel" id="roomDetails">
+        <h2>2. Room details <span class="sub">(optional)</span></h2>
+        <p class="sub">These details are added to the AI prompt. Measure the photo to get dimensions automatically, then correct any value that looks wrong.</p>
+        <div class="field-row">
+          <label>Room type
+            <select class="input" name="room_type">
+              {% for value, label in room_types.items() %}
+              <option value="{{ value }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Style
+            <select class="input" name="style">
+              {% for value, label in styles.items() %}
+              <option value="{{ value }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <div class="field-row">
+          <label>Budget
+            <input class="input" type="text" name="budget" maxlength="80" placeholder="e.g. ₹50,000">
+          </label>
+          <label>Reference length in photo (pixels)
+            <input class="input" type="number" id="referencePixels" min="1" max="100000" step="1" placeholder="e.g. 180 (door ≈ 2 m)">
+          </label>
+        </div>
+        <label>Preferences
+          <textarea class="textarea" name="preferences" maxlength="500" rows="2" placeholder="e.g. low maintenance, pet friendly, warm colours"></textarea>
+        </label>
+        <div class="field-row measure-row">
+          <button type="button" class="btn btn-ghost" id="measureBtn">{{ icon('target') }} Measure room</button>
+          <span class="hint" id="measureStatus" role="status" aria-live="polite">Upload a photo, then measure it.</span>
+        </div>
+        <div class="field-row dims-row">
+          <label>Width (m)<input class="input" type="number" name="width_m" id="widthM" min="0.1" max="100" step="0.01" placeholder="auto"></label>
+          <label>Length (m)<input class="input" type="number" name="length_m" id="lengthM" min="0.1" max="100" step="0.01" placeholder="auto"></label>
+          <label>Height (m)<input class="input" type="number" name="height_m" id="heightM" min="0.1" max="100" step="0.01" placeholder="auto"></label>
+        </div>
+        <input type="hidden" name="detection_notes" id="detectionNotes">
+        <img id="analysisOverlay" alt="Room measurement overlay" hidden>
+      </section>
+
       <section class="panel">
-        <h2>2. What should we add?</h2>
+        <h2>3. What should we add?</h2>
         <p class="sub">Type it, or tap the microphone and say it. Both work.</p>
         <div class="field" style="margin-bottom:0">
           <label for="prompt" class="sr-only">Describe the object</label>
@@ -54,7 +97,12 @@
       </section>
 
       <section class="panel">
-        <h2>3. Where should it go?</h2>
+        <h2>4. What should we edit?</h2>
+        <div class="mode-row">
+          <label><input type="radio" name="mode" value="zone" checked> Add one item in a zone</label>
+          <label><input type="radio" name="mode" value="whole"> Redesign the whole room</label>
+        </div>
+        <div id="zoneControls">
         <p class="sub">Pick a spot. The mask is created there and only that area is edited.</p>
         <div class="pos-grid" role="radiogroup" aria-label="Placement position">
           {% for value, label in positions.items() %}
@@ -64,10 +112,11 @@
           </label>
           {% endfor %}
         </div>
+        </div>
       </section>
 
       <section class="panel">
-        <h2>4. Where can you buy it?</h2>
+        <h2>5. Where can you buy it?</h2>
         <p class="sub">Enter your city or area and we will suggest nearby places that sell it. Optional.</p>
         <div class="loc-row">
           <input class="input" type="text" id="location" name="location" maxlength="200" placeholder="e.g. Banjara Hills, Hyderabad" autocomplete="address-level2">
@@ -156,6 +205,46 @@
   document.querySelectorAll('input[name=position]').forEach(r => {
     r.addEventListener('change', () => placeZone(r.value));
     if (r.checked) placeZone(r.value);
+  });
+
+  document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', () => {
+    const whole = document.querySelector('input[name=mode]:checked').value === 'whole';
+    document.getElementById('zoneControls').hidden = whole;
+    zone.hidden = whole;
+  }));
+
+  // ---- Measure room: POST the photo to /api/analyze-room ----
+  const measureBtn = document.getElementById('measureBtn');
+  const measureStatus = document.getElementById('measureStatus');
+  measureBtn.addEventListener('click', async () => {
+    const file = input.files[0];
+    if (!file) { measureStatus.textContent = 'Choose a room photo first.'; return; }
+    const fd = new FormData();
+    fd.append('image', file);
+    const pixels = document.getElementById('referencePixels').value.trim();
+    if (pixels) fd.append('reference_pixels', pixels);
+    measureBtn.disabled = true;
+    measureStatus.textContent = 'Measuring walls and reference length...';
+    try {
+      const res = await fetch('{{ url_for("api_analyze_room") }}',
+        { method:'POST', body:fd, credentials:'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || 'Could not measure this photo.');
+      document.getElementById('widthM').value = data.width_m;
+      document.getElementById('lengthM').value = data.length_m;
+      document.getElementById('heightM').value = data.height_m;
+      document.getElementById('detectionNotes').value =
+        'Confidence: ' + data.confidence + '. ' + (data.note || '');
+      const overlay = document.getElementById('analysisOverlay');
+      overlay.src = data.overlay_url + '?t=' + Date.now();
+      overlay.hidden = false;
+      measureStatus.textContent = 'Measured ' + data.width_m + ' × ' + data.length_m +
+        ' × ' + data.height_m + ' m (' + data.confidence + ' confidence). Check the values above.';
+    } catch (err) {
+      measureStatus.textContent = err.message || 'Could not measure this photo.';
+    } finally {
+      measureBtn.disabled = false;
+    }
   });
 
   // ---- Voice input: record in the browser, transcribe with SpeechRecognition on the server ----

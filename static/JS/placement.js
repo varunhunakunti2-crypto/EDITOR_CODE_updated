@@ -66,6 +66,25 @@
     return el;
   }
 
+  // Restore an arrangement saved earlier via POST /design/<id>/placement.
+  function restore(saved) {
+    (saved || []).forEach(item => {
+      if (!item || !item.src) return;
+      const el = addItem(item.src,
+        clamp(Number(item.rx) || 0, 0, 1),
+        clamp(Number(item.ry) || 0, 0, 1),
+        item.name || 'Furniture');
+      el.dataset.scale = clamp(Number(item.scale) || DEFAULT_SCALE, 0.05, 0.7);
+      position(el);
+    });
+  }
+
+  const savedNode = document.getElementById('saved-placement');
+  if (savedNode) {
+    try { restore(JSON.parse(savedNode.textContent).items || []); }
+    catch (_) { /* ignore malformed saved data */ }
+  }
+
   function attachMove(el) {
     let dragging = false;
     el.addEventListener('pointerdown', e => {
@@ -160,6 +179,33 @@
     items = [];
     refreshHint();
     status.textContent = 'Placement cleared. Drag an item from the palette to start again.';
+  });
+
+  const saveButton = panel.querySelector('[data-save-placement]');
+  if (saveButton) saveButton.addEventListener('click', async () => {
+    saveButton.disabled = true;
+    status.textContent = 'Saving placement...';
+    const payload = {
+      items: items.map(el => ({
+        src: el.dataset.src, name: el.dataset.name,
+        rx: parseFloat(el.dataset.rx), ry: parseFloat(el.dataset.ry),
+        scale: parseFloat(el.dataset.scale),
+      })),
+    };
+    try {
+      const res = await fetch(panel.dataset.saveUrl, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || 'Could not save placement.');
+      status.textContent = 'Saved ' + data.count + ' placed item(s).';
+    } catch (err) {
+      status.textContent = err.message || 'Could not save placement.';
+    } finally {
+      saveButton.disabled = false;
+    }
   });
 
   // Flatten the arranged items onto the original result and download a PNG.

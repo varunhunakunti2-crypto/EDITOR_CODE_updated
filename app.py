@@ -16,6 +16,8 @@ import uuid
 import config
 import masking
 import places
+import room_analysis
+from prompt_builder import build_prompt, describe_room, ROOM_TYPES, STYLES
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = config.SECRET_KEY
@@ -44,6 +46,14 @@ def role_required(*roles):
     return decorator
 
 
+def safe_print(message):
+    """Print user-supplied text without crashing on cp1252 consoles."""
+    try:
+        print(message)
+    except UnicodeEncodeError:
+        print(message.encode('ascii', 'backslashreplace').decode('ascii'))
+
+
 def landing_for(user):
     """Where each role lands after logging in."""
     if user.is_admin:
@@ -60,7 +70,7 @@ def format_date(value, fmt='%d %b %Y'):
 
 # Create upload directories
 STATIC_UPLOADS = os.path.join(config.BASE_DIR, 'static', 'uploads')
-for folder in ['input', 'mask', 'output', 'products']:
+for folder in ['input', 'mask', 'output', 'products', 'analysis']:
     os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], folder), exist_ok=True)
     os.makedirs(os.path.join(STATIC_UPLOADS, folder), exist_ok=True)
 
@@ -391,6 +401,73 @@ def inject_roles():
     }
 
 
+def _form_float(form, key, low=0.0, high=1000.0):
+    """Return a bounded float from a form field, or None when absent/invalid."""
+    raw = (form.get(key) or '').strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    return value if low <= value <= high else None
+
+
+@app.route('/api/analyze-room', methods=['POST'])
+@login_required
+def api_analyze_room():
+    """Measure an uploaded room photo and return dimensions as JSON."""
+    image = request.files.get('image')
+    if image is None or image.filename == '':
+        return jsonify(error='Please choose a room photo.'), 400
+    if not allowed_file(image.filename):
+        return jsonify(error='Please upload a PNG, JPG or JPEG image.'), 400
+
+    manual = {}
+    reference_pixels = _form_float(request.form, 'reference_pixels', 1, 100000)
+    reference_length = _form_float(request.form, 'reference_length_m', 0.1, 100)
+    if reference_pixels is not None:
+        manual['reference_pixels'] = reference_pixels
+    if reference_length is not None:
+        manual['reference_length_m'] = reference_length
+    for key in ('width_m', 'length_m', 'height_m'):
+        value = _form_float(request.form, key, 0.1, 100)
+        if value is not None:
+            manual[key] = value
+
+    tmp_dir = tempfile.mkdtemp(prefix='room-api-')
+    extension = os.path.splitext(image.filename)[1].lower()
+    tmp_path = os.path.join(tmp_dir, 'photo' + extension)
+    try:
+        image.save(tmp_path)
+        analysis = room_analysis.analyze_room(
+            tmp_path,
+            reference_length_m=reference_length or room_analysis.DEFAULT_REFERENCE_M,
+            manual=manual,
+            output_dir=os.path.join(STATIC_UPLOADS, 'analysis'),
+        )
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    except Exception as exc:
+        print('[ERROR] Room analysis failed:', exc)
+        return jsonify(error='Room analysis failed. Please try another photo.'), 500
+    finally:
+        try:
+            os.remove(tmp_path)
+            os.rmdir(tmp_dir)
+        except OSError:
+            pass
+
+    return jsonify(
+        width_m=analysis['width_m'], length_m=analysis['length_m'],
+        height_m=analysis['height_m'], confidence=analysis['confidence'],
+        note=analysis['note'], reference=analysis['reference'],
+        detected=analysis['detected'], image_size=analysis['image_size'],
+        overlay_url=url_for('static', filename='uploads/analysis/' +
+                            os.path.basename(analysis['overlay_path'])),
+    )
+
+
 @app.route('/design', methods=['GET', 'POST'])
 @login_required
 def design():
@@ -401,8 +478,21 @@ def design():
         
         file = request.files['image']
         prompt = request.form.get('prompt', '').strip()
-        position = masking.normalize_position(request.form.get('position'))
+        whole_room = request.form.get('mode') == 'whole'
+        position = ('whole_room' if whole_room else
+                    masking.normalize_position(request.form.get('position')))
         location = request.form.get('location', '').strip()[:200]
+
+        room_type = request.form.get('room_type', '').strip().lower()
+        style = request.form.get('style', '').strip().lower()
+        room_type = room_type if room_type in ROOM_TYPES else ''
+        style = style if style in STYLES else ''
+        budget = request.form.get('budget', '').strip()[:80]
+        preferences = request.form.get('preferences', '').strip()[:500]
+        width_m = _form_float(request.form, 'width_m', 0.1, 100)
+        length_m = _form_float(request.form, 'length_m', 0.1, 100)
+        height_m = _form_float(request.form, 'height_m', 0.1, 100)
+        detection_notes = request.form.get('detection_notes', '').strip()[:1000]
 
         if not prompt:
             flash('Please type or speak what you want to add.', 'error')
@@ -426,8 +516,9 @@ def design():
                 # Load input image
                 init_image = Image.open(input_path).convert("RGB").resize((512, 512))
                 
-                # Mask at the position the user picked (one of nine)
-                mask_image = masking.build_mask(position, init_image.size)
+                # One zone for an item, or a fully white mask for a whole-room redesign.
+                mask_image = (masking.build_full_mask(init_image.size) if whole_room
+                              else masking.build_mask(position, init_image.size))
 
                 # Save mask
                 mask_filename = f"mask_{filename}"
@@ -444,11 +535,16 @@ def design():
                           + detail + '.', 'error')
                     return redirect(request.url)
 
-                print(f"[AI] Generating image with prompt: {prompt}")
+                generation_prompt = build_prompt(
+                    prompt, room_type=room_type, style=style, budget=budget,
+                    preferences=preferences, width_m=width_m, length_m=length_m,
+                    height_m=height_m, whole_room=whole_room,
+                )
+                safe_print(f"[AI] Generating image with prompt: {generation_prompt}")
 
                 with torch.inference_mode():
                     result = pipeline(
-                        prompt=prompt,
+                        prompt=generation_prompt,
                         image=init_image,
                         mask_image=mask_image,
                         guidance_scale=7.5,
@@ -485,6 +581,14 @@ def design():
                     position=position,
                     location=location,
                     places_json=json.dumps(nearby),
+                    room_type=room_type,
+                    style=style,
+                    budget=budget,
+                    preferences=preferences,
+                    width_m=width_m,
+                    length_m=length_m,
+                    height_m=height_m,
+                    detection_notes=detection_notes,
                 )
                 db.session.add(new_design)
                 db.session.commit()
@@ -502,7 +606,8 @@ def design():
             flash('Invalid file type! Please upload PNG, JPG, or JPEG.', 'error')
     
     return render_template('design.html', positions=masking.LABELS,
-                           default_position=masking.DEFAULT_POSITION)
+                           default_position=masking.DEFAULT_POSITION,
+                           room_types=ROOM_TYPES, styles=STYLES)
 
 
 @app.route('/design/<int:design_id>')
@@ -518,11 +623,67 @@ def result(design_id):
         nearby = json.loads(d.places_json) if d.places_json else None
     except ValueError:
         nearby = None
+    try:
+        placement = json.loads(d.placement_json) if d.placement_json else {}
+        if not isinstance(placement, dict):
+            placement = {}
+    except ValueError:
+        placement = {}
     # Furniture from the shop catalogue is available to drag onto the result.
     furniture = Product.query.order_by(Product.created_at.desc()).all()
-    return render_template('result.html', d=d, nearby=nearby,
+    return render_template('result.html', d=d, nearby=nearby, placement=placement,
+                           room_summary=describe_room(
+                               d.room_type, d.style, d.budget,
+                               d.width_m, d.length_m, d.height_m),
                            position_label=masking.LABELS.get(d.position, 'Centre'),
                            furniture=furniture)
+
+
+@app.route('/design/<int:design_id>/placement', methods=['POST'])
+@login_required
+def save_placement(design_id):
+    """Persist the furniture arrangement (design owner or admin only)."""
+    d = Design.query.get_or_404(design_id)
+    if not (current_user.is_admin or d.user_id == current_user.id):
+        abort(403)
+
+    payload = request.get_json(silent=True)
+    if payload is None:
+        raw = request.form.get('placement_json') or request.form.get('items')
+        try:
+            payload = json.loads(raw) if raw else None
+        except (TypeError, ValueError):
+            payload = None
+    if not isinstance(payload, dict) or not isinstance(payload.get('items'), list):
+        return jsonify(error='Expected JSON with an items list.'), 400
+    if len(payload['items']) > 100:
+        return jsonify(error='Too many placed items (maximum 100).'), 400
+
+    def bounded(value, low, high, default):
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            number = default
+        return round(min(high, max(low, number)), 4)
+
+    cleaned = []
+    for item in payload['items']:
+        if not isinstance(item, dict):
+            continue
+        src = str(item.get('src') or '')[:200000]
+        if not src:
+            continue
+        cleaned.append({
+            'src': src,
+            'name': str(item.get('name') or 'Furniture')[:120],
+            'rx': bounded(item.get('rx'), 0, 1, 0.5),
+            'ry': bounded(item.get('ry'), 0, 1, 0.5),
+            'scale': bounded(item.get('scale'), 0.05, 0.7, 0.18),
+        })
+
+    d.placement_json = json.dumps({'items': cleaned}, separators=(',', ':'))
+    db.session.commit()
+    return jsonify(ok=True, count=len(cleaned))
 
 
 @app.route('/transcribe', methods=['POST'])

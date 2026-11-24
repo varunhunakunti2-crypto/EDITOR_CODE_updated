@@ -74,6 +74,23 @@ manual={'length_m': 6})`. The result includes `width_m`, `length_m`,
 `height_m`, `confidence`, `note`, `reference`, detected corners and an
 `overlay_path` under `static/uploads/analysis/`.
 
+The design form calls `POST /api/analyze-room` (login required) with the photo
+and optional `reference_pixels`; it returns the same dimensions as JSON plus an
+`overlay_url`, and fills editable width/length/height inputs.
+
+## Room-aware design generation
+The design form now records room type, style, budget, preferences and measured
+dimensions. `prompt_builder.py` combines them with the user's prompt before
+inpainting; the original prompt stays in the database row and the result page
+shows the room summary. Two edit modes are supported:
+
+- **Add one item in a zone** — the existing nine-zone mask
+- **Redesign the whole room** — a fully white mask (`whole_room` position)
+
+Furniture arrangements are saved with `POST /design/<id>/placement` (JSON with
+an `items` list; design owner or admin only) and restored when the result page
+is reopened. The Save placement button in the placement panel calls this route.
+
 ## Admin lists and product details
 - `/admin/users` — full user list with roles, design/product counts and shop links
 - `/admin/shops` — shop owners with product/in-stock counts; `/admin/shops/<owner_id>` opens one shop's catalogue
@@ -92,6 +109,7 @@ Admin list routes are role-protected; non-admins are redirected to their dashboa
 - `app.py` — routes, role guards, Gemini integration and lazy AI model loading
 - `database.py` — SQLAlchemy models and automatic schema upgrades
 - `room_analysis.py` — OpenCV room measurement and annotated overlays
+- `prompt_builder.py` — combines room details with the user's prompt
 - `templates/`, `static/` — UI, styles and client-side placement (`static/JS/placement.js`)
 - `tests/` — smoke suite and Playwright browser/screenshot suite
 - `docs/screenshots/` — generated UI captures
@@ -108,6 +126,7 @@ Start the app first (`python app.py`), then run the suites from the project fold
     python tests/smoke_test.py       # 41 HTTP/DB checks, standard library only
     python tests/browser_check.py    # 12 real-browser checks + screenshot generator
     python tests/room_analysis_check.py  # OpenCV measurement checks, no server needed
+    python tests/backend_check.py    # in-process API/DB checks, stubbed AI, no server needed
 
 `smoke_test.py` verifies public pages, role-based redirects and guards for all four
 roles, product upload/list/detail/delete, catalogue access, admin lists and file
@@ -116,6 +135,9 @@ exercise drag-and-drop placement, check for console errors and failed requests,
 and regenerate the screenshots below. `room_analysis_check.py` generates three
 synthetic rooms with known dimensions, checks the measured size, overlays and
 manual overrides, and also analyses any uploaded room photos.
+`backend_check.py` posts a design with every new field, verifies the DB row and
+result page, checks the whole-room mask, and exercises placement guards with a
+stubbed pipeline (no diffusion or API keys needed).
 
     pip install playwright && python -m playwright install chromium
 

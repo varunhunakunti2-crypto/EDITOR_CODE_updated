@@ -6,7 +6,7 @@
   <div class="page-head">
     <div>
       <h1>Your design is ready</h1>
-      <p>{{ d.prompt }} · placed at <strong>{{ position_label|lower }}</strong></p>
+      <p>{{ d.prompt }} · placed at <strong>{{ position_label|lower }}</strong>{% if room_summary %} · {{ room_summary }}{% endif %}</p>
     </div>
     <a href="{{ url_for('design') }}" class="btn btn-primary btn-lg">{{ icon('plus') }} New design</a>
   </div>
@@ -55,7 +55,19 @@
     </section>
   </div>
 
-  <section class="panel placement-panel" data-placement data-result-image="{{ after }}">
+  {% if d.room_type or d.style or d.budget or d.preferences or d.width_m or d.length_m or d.height_m or d.detection_notes %}
+  <section class="panel room-details">
+    <h2>Room details</h2>
+    <ul class="room-summary">
+      {% if room_summary %}<li>{{ room_summary }}</li>{% endif %}
+      {% if d.preferences %}<li>Preferences: {{ d.preferences }}</li>{% endif %}
+      {% if d.detection_notes %}<li>{{ d.detection_notes }}</li>{% endif %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <section class="panel placement-panel" data-placement data-result-image="{{ after }}"
+           data-save-url="{{ url_for('save_placement', design_id=d.id) }}">
     <div class="placement-head">
       <div>
         <h2>{{ icon('wand') }} Place furniture</h2>
@@ -63,6 +75,7 @@
       </div>
       <div class="head-actions">
         <button type="button" class="btn btn-ghost" data-clear-placement>{{ icon('x') }} Clear</button>
+        <button type="button" class="btn btn-ghost" data-save-placement>{{ icon('check') }} Save placement</button>
         <button type="button" class="btn btn-primary" data-download-placement>{{ icon('download') }} Download design</button>
       </div>
     </div>
@@ -98,5 +111,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script type="application/json" id="saved-placement">{{ placement|tojson }}</script>
 <script src="{{ url_for('static', filename='JS/placement.js') }}"></script>
 {% endblock %}

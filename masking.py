@@ -16,6 +16,7 @@ LABELS = {
     "top_left": "Top left", "top_center": "Top centre", "top_right": "Top right",
     "middle_left": "Middle left", "middle_center": "Centre", "middle_right": "Middle right",
     "bottom_left": "Bottom left", "bottom_center": "Bottom centre", "bottom_right": "Bottom right",
+    "whole_room": "Whole room",
 }
 DEFAULT_POSITION = "middle_center"
 
@@ -46,6 +47,11 @@ def build_mask(position, size=(IMG_SIZE, IMG_SIZE)):
     mask = Image.new("RGB", size, (0, 0, 0))
     ImageDraw.Draw(mask).rectangle(mask_box(position, size[0]), fill=(255, 255, 255))
     return mask
+
+
+def build_full_mask(size=(IMG_SIZE, IMG_SIZE)):
+    """White everywhere: let the model redesign the entire visible room."""
+    return Image.new("RGB", size, (255, 255, 255))
 
 
 def zone_css(position):
