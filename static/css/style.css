@@ -360,6 +360,14 @@ p{margin:0}
 .enquiry-message{margin:.8rem 0;padding:.7rem .9rem;border-radius:var(--r-md);background:var(--paper);color:var(--ink-2)}
 .enquiry-status{display:flex;gap:8px;align-items:center;max-width:360px}
 .enquiry-status select{flex:1}
+.shop-contact{margin-top:1.4rem;padding:1rem;border:1px solid var(--mist);border-radius:var(--r-md);background:var(--paper)}
+.shop-contact-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.shop-contact-head h2{margin:0;font:700 1rem var(--font-ui)}
+.shop-contact .details{margin-top:.4rem}
+.shop-line{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:.3rem 0 .5rem}
+.status-note{display:flex;align-items:center;gap:6px;margin:.8rem 0;padding:.55rem .75rem;border-radius:var(--r-md);background:var(--moss-tint);color:var(--moss);font-size:.85rem}
+.shop-profile-panel{margin-bottom:1.2rem}
+.shop-profile-panel .btn{margin-top:1rem}
 .activity-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;margin-top:1rem}
 .activity-grid h3{margin:0 0 .7rem;font:700 .9rem var(--font-ui);color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em}
 .activity-list{list-style:none;margin:0;padding:0;display:grid;gap:.5rem}

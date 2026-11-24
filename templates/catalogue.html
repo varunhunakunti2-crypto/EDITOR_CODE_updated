@@ -26,8 +26,13 @@
         {% if p.category %}<span class="tag">{{ p.category }}</span>{% endif %}
       </div>
       <div class="product-body">
+        {% set s = shops[p.owner_id] %}
         <h2>{{ p.name }}</h2>
-        <p class="sub">{{ p.owner.username }}</p>
+        <p class="sub shop-line">
+          {{ icon('store') }} {{ s.name }}
+          {% if s.verified %}<span class="role-badge">Verified</span>{% endif %}
+          {% if s.city %} · {{ icon('pin') }} {{ s.city }}{% endif %}
+        </p>
         <div class="product-price">₹{{ '%.2f'|format(p.price) }}</div>
         <dl class="product-meta">
           <div><dt>Availability</dt><dd><span class="role-badge">{{ p.availability_label }}</span></dd></div>

@@ -82,6 +82,12 @@ def setup_demo():
         products = con.execute("SELECT id, name, image_file FROM product WHERE owner_id=?",
                                (shop_id,)).fetchall()
         images = [p[2] for p in products]
+        con.execute(
+            "INSERT INTO enquiry (product_id, customer_id, shop_owner_id, message, kind, status) "
+            "VALUES (?,?,?,?,?,?)",
+            (products[0][0], cust_id, shop_id,
+             "Could you share the dimensions?", "enquiry", "responded"),
+        )
         places = {
             "item": "wooden bookshelf", "location": "Koramangala, Bengaluru",
             "places": [{"name": "Home Centre", "type": "Furniture store",
@@ -192,6 +198,12 @@ def main():
             page.goto(BASE + "/dashboard")
             page.wait_for_load_state("networkidle")
             shot(page, "09-customer-dashboard")
+
+            page.goto(BASE + "/my/enquiries")
+            page.wait_for_load_state("networkidle")
+            shot(page, "16-my-enquiries")
+            check("customer enquiries page", "My enquiries" in page.content() and
+                  "Could you share the dimensions?" in page.content())
 
             # Admin pages
             login(page, demo["admin"])

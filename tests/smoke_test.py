@@ -100,6 +100,8 @@ def main():
         check("public " + path, request(anon, path)[0] == 200)
     check("anonymous dashboard blocked",
           request(anon_strict, "/dashboard")[0] == 302)
+    check("anonymous my enquiries blocked",
+          request(anon_strict, "/my/enquiries")[0] == 302)
 
     # --- Roles ------------------------------------------------------------
     admin_f, admin_s, admin_u = make_user("smoke_admin_", "customer")
@@ -145,6 +147,8 @@ def main():
     for path in ["/admin", "/admin/users", "/admin/shops", "/admin/reports",
                  "/admin/products", "/shop", "/shop/products"]:
         check("admin can open " + path, request(admin_f, path)[0] == 200)
+    check("customer can open my enquiries", request(cust_f, "/my/enquiries")[0] == 200)
+    check("designer can open my enquiries", request(design_f, "/my/enquiries")[0] == 200)
 
     # --- Products ---------------------------------------------------------
     image = open(os.path.join("sample.jpg"), "rb").read()
@@ -163,6 +167,8 @@ def main():
 
     st, _, html = request(shop_f, "/shop/products")
     check("owner product list", st == 200 and "Smoke Test Lamp" in html and "/products/" + str(pid) in html)
+    check("owner list shows shop details", all(text in html for text in
+          ["Smoke Interiors", "Bengaluru", "9876543210", "1 Test Street", shop_u + "@t.local"]))
     st, _, html = request(shop_f, "/products/" + str(pid))
     check("owner product detail", st == 200 and "Manage catalogue" in html and "1234.50" in html)
     st, _, html = request(cust_f, "/products")
@@ -179,8 +185,13 @@ def main():
     check("shop now verified", verified and verified[0] == 1, verified)
     st, _, html = request(cust_f, "/products")
     check("public catalogue", st == 200 and "Smoke Test Lamp" in html)
+    check("catalogue shows verified shop", "Smoke Interiors" in html and "Bengaluru" in html)
     st, _, html = request(cust_f, "/products/" + str(pid))
     check("public product detail", st == 200 and "30 x 30 x 140 cm" in html and "Place in my design" in html)
+    check("detail shows verified shop contact", all(text in html for text in
+          ["Smoke Interiors", "Bengaluru", "9876543210", "1 Test Street", shop_u + "@t.local"]))
+    check("ask shop owner form offered", "Ask shop owner" in html and
+          "/products/" + str(pid) + "/enquire" in html)
     check("unknown product 404", request(cust_s, "/products/999999")[0] == 404)
 
     # --- Product editing, availability and enquiries ----------------------
@@ -211,6 +222,11 @@ def main():
     with sqlite3.connect(DB) as con:
         enq = con.execute("SELECT id, status FROM enquiry WHERE product_id=?", (pid,)).fetchone()
     check("enquiry stored as new", enq and enq[1] == "new", enq)
+    st, _, html = request(cust_f, "/my/enquiries")
+    check("customer sees own enquiry as new",
+          st == 200 and "Is this available in walnut?" in html and "New" in html)
+    st, _, html = request(design_f, "/my/enquiries")
+    check("other customer cannot see enquiry", "Is this available in walnut?" not in html)
     st, _, html = request(shop_f, "/shop/enquiries")
     check("owner inbox shows enquiry", st == 200 and "Is this available in walnut?" in html)
     st, loc, _ = post(cust_s, f"/shop/enquiries/{enq[0]}/status", {"status": "closed"})
@@ -220,6 +236,9 @@ def main():
     with sqlite3.connect(DB) as con:
         state = con.execute("SELECT status FROM enquiry WHERE id=?", (enq[0],)).fetchone()[0]
     check("enquiry status persisted", state == "responded", state)
+    st, _, html = request(cust_f, "/my/enquiries")
+    check("customer sees responded status",
+          st == 200 and "Is this available in walnut?" in html and "Responded" in html)
 
     body, ctype = multipart({"name": "Bad File", "price": "10"}, "bad.txt", b"not an image")
     st, _, _ = request(shop_s, "/shop/products/add", body, ctype)

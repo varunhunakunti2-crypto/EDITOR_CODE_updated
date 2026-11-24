@@ -14,6 +14,23 @@
     </div>
   </div>
 
+  {% if not current_user.is_admin %}
+  <section class="panel shop-profile-panel">
+    <div class="shop-contact-head">
+      <h2>{{ icon('store') }} {{ shop.name }}</h2>
+      <span class="role-badge">{{ 'Verified shop' if shop.verified else 'Verification pending' }}</span>
+    </div>
+    <p class="sub">These details appear on every product you list once your shop is verified.</p>
+    <dl class="details">
+      <div><dt>City</dt><dd>{{ shop.city or 'Not provided' }}</dd></div>
+      <div><dt>Phone</dt><dd>{{ shop.phone or 'Not provided' }}</dd></div>
+      <div><dt>Address</dt><dd>{{ shop.address or 'Not provided' }}</dd></div>
+      <div><dt>Email</dt><dd>{{ shop.email }}</dd></div>
+    </dl>
+    <a href="{{ url_for('shop_profile_view') }}" class="btn btn-ghost">{{ icon('user') }} Edit shop details</a>
+  </section>
+  {% endif %}
+
   <div class="stats">
     <div class="stat"><b>{{ products|length }}</b><span>Products listed</span></div>
     <div class="stat"><b>{{ products|selectattr('availability', 'equalto', 'in_stock')|list|length }}</b><span>In stock</span></div>

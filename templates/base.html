@@ -27,6 +27,7 @@
                     <a href="{{ url_for('shop_dashboard') }}" class="{{ 'active' if request.endpoint == 'shop_dashboard' }}">{{ icon('store') }} Shop</a>
                     {% endif %}
                     <a href="{{ url_for('catalogue') }}" class="{{ 'active' if request.endpoint in ['catalogue', 'product_detail'] }}">{{ icon('store') }} Furniture</a>
+                    <a href="{{ url_for('my_enquiries') }}" class="{{ 'active' if request.endpoint == 'my_enquiries' }}">{{ icon('mail') }} My enquiries</a>
                     <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">{{ icon('grid') }} My designs</a>
                     <a href="{{ url_for('profile') }}" class="{{ 'active' if request.endpoint == 'profile' }}">{{ icon('user') }} Profile</a>
                     <a href="{{ url_for('logout') }}">{{ icon('logout') }} Log out</a>

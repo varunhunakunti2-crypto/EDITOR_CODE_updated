@@ -149,14 +149,24 @@ def main():
         # 4. Product is now publicly listed; customer sends an enquiry.
         login(page, cust_u)
         page.goto(BASE + '/products')
-        check('verified product visible', product_name in page.locator('body').inner_text())
+        body = page.locator('body').inner_text()
+        check('verified product visible', product_name in body)
+        check('catalogue shows verified shop', shop_name in body and 'Bengaluru' in body)
         page.goto(BASE + '/products/' + str(state['product_id']))
+        body = page.locator('body').inner_text()
+        check('detail shows verified shop contact', all(text in body for text in
+              (shop_name, 'Bengaluru', '9876543210', shop_u + '@t.local')))
+        check('ask shop owner form present', 'Ask shop owner' in body)
         page.fill('#message', 'Do you deliver this week?')
         page.check('input[name=kind][value=order]')
         page.click('button:has-text("Send to shop")')
         page.wait_for_load_state('networkidle')
         check('customer enquiry sent',
               'Your order was sent' in page.locator('body').inner_text())
+        page.goto(BASE + '/my/enquiries')
+        body = page.locator('body').inner_text()
+        check('customer sees new enquiry',
+              'Do you deliver this week?' in body and 'New' in body)
         with sqlite3.connect(DB) as con:
             enq = con.execute('SELECT id, kind, status FROM enquiry WHERE product_id=?',
                               (state['product_id'],)).fetchone()
@@ -174,7 +184,14 @@ def main():
             status = con.execute('SELECT status FROM enquiry WHERE id=?', (enq[0],)).fetchone()[0]
         check('enquiry status updated', status == 'responded', status)
 
+        login(page, cust_u)
+        page.goto(BASE + '/my/enquiries')
+        body = page.locator('body').inner_text()
+        check('customer sees responded status',
+              'Do you deliver this week?' in body and 'Responded' in body)
+
         # 6. Owner edits the product and changes availability.
+        login(page, shop_u)
         page.goto(BASE + '/shop/products')
         card = page.locator('.product-card', has_text=product_name)
         card.get_by_role('link', name='Edit details').click()

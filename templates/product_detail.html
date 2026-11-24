@@ -6,9 +6,12 @@
   <div class="page-head">
     <div>
       <h1>{{ product.name }}</h1>
-      <p>Listed by {{ product.owner.username }}{% if product.category %} · {{ product.category }}{% endif %}</p>
+      <p>Listed by {{ shop.name }}{% if shop.verified %} · Verified shop{% endif %}{% if product.category %} · {{ product.category }}{% endif %}</p>
     </div>
-    <a href="{{ url_for('catalogue') }}" class="btn btn-ghost btn-lg">{{ icon('grid') }} Back to catalogue</a>
+    <div class="head-actions">
+      <a href="{{ url_for('my_enquiries') }}" class="btn btn-ghost btn-lg">{{ icon('mail') }} My enquiries</a>
+      <a href="{{ url_for('catalogue') }}" class="btn btn-ghost btn-lg">{{ icon('grid') }} Back to catalogue</a>
+    </div>
   </div>
 
   <div class="detail-grid">
@@ -24,16 +27,36 @@
         <div><dt>Product</dt><dd>{{ product.name }}</dd></div>
         {% if product.category %}<div><dt>Category</dt><dd>{{ product.category }}</dd></div>{% endif %}
         {% if product.dimensions %}<div><dt>Dimensions</dt><dd>{{ product.dimensions }}</dd></div>{% endif %}
-        <div><dt>Sold by</dt><dd>{{ product.owner.username }}</dd></div>
+        <div><dt>Sold by</dt><dd>{{ shop.name }}</dd></div>
         <div><dt>Listed</dt><dd>{{ product.created_at|date }}</dd></div>
         {% if product.description %}
         <div><dt>Description</dt><dd>{{ product.description }}</dd></div>
         {% endif %}
       </dl>
 
+      <section class="shop-contact">
+        <div class="shop-contact-head">
+          <h2>{{ icon('store') }} {{ shop.name }}</h2>
+          <span class="role-badge">{{ 'Verified shop' if shop.verified else 'Verification pending' }}</span>
+        </div>
+        <dl class="details">
+          {% if shop.city %}
+          <div><dt>City</dt><dd>{{ icon('pin') }} {{ shop.city }}</dd></div>
+          {% endif %}
+          {% if shop.address %}
+          <div><dt>Address</dt><dd>{{ shop.address }}</dd></div>
+          {% endif %}
+          {% if shop.phone %}
+          <div><dt>Phone</dt><dd>{{ shop.phone }}</dd></div>
+          {% endif %}
+          <div><dt>Email</dt><dd>{{ shop.email }}</dd></div>
+        </dl>
+      </section>
+
       {% if not current_user.is_admin and current_user.id != product.owner_id %}
       <section class="enquiry-form" style="margin-top:1.5rem">
-        <h2>Contact this shop</h2>
+        <h2>Ask shop owner</h2>
+        <p class="sub">Send a message or order directly to {{ shop.name }}.</p>
         <form method="POST" action="{{ url_for('product_enquire', product_id=product.id) }}">
           <div class="field-row">
             <label><input type="radio" name="kind" value="enquiry" checked> Enquiry</label>

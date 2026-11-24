@@ -8,7 +8,10 @@
       <h1>Hello, {{ current_user.username }}</h1>
       <p><span class="role-badge">{{ current_user.role_label }}</span> &nbsp; {% if designs %}Open any design to compare it with the original.{% else %}Your designs will appear here.{% endif %}</p>
     </div>
-    <a href="{{ url_for('design') }}" class="btn btn-primary btn-lg">{{ icon('plus') }} New design</a>
+    <div class="head-actions">
+      <a href="{{ url_for('my_enquiries') }}" class="btn btn-ghost btn-lg">{{ icon('mail') }} My enquiries</a>
+      <a href="{{ url_for('design') }}" class="btn btn-primary btn-lg">{{ icon('plus') }} New design</a>
+    </div>
   </div>
 
   {% if designs %}

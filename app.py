@@ -72,6 +72,23 @@ def shop_profile_for(owner_id):
     return ShopProfile.query.filter_by(owner_id=owner_id).first()
 
 
+def shop_snapshot(owner_id):
+    """Public-facing shop identity and contact details for a product owner."""
+    profile = shop_profile_for(owner_id)
+    owner = db.session.get(User, owner_id)
+    return {
+        'profile': profile,
+        'owner': owner,
+        'name': (profile.shop_name if profile and profile.shop_name else
+                 (owner.username if owner else '')),
+        'city': profile.city if profile else '',
+        'address': profile.address if profile else '',
+        'phone': profile.phone if profile else '',
+        'email': owner.email if owner else '',
+        'verified': bool(profile and profile.verified),
+    }
+
+
 def safe_next(fallback):
     """Only allow local redirect targets supplied by a form."""
     target = request.form.get('next', '')
@@ -361,7 +378,8 @@ def products():
     if not current_user.is_admin:
         query = query.filter_by(owner_id=current_user.id)
     return render_template('products.html', availability=AVAILABILITY,
-                           products=query.order_by(Product.created_at.desc()).all())
+                           products=query.order_by(Product.created_at.desc()).all(),
+                           shop=shop_snapshot(current_user.id))
 
 
 @app.route('/shop/products/add', methods=['GET', 'POST'])
@@ -649,7 +667,11 @@ def admin_reports():
 def catalogue():
     """Browse every listed product (for customers, designers and admins)."""
     products = visible_products().order_by(Product.created_at.desc()).all()
-    return render_template('catalogue.html', products=products)
+    shops = {}
+    for product in products:
+        if product.owner_id not in shops:
+            shops[product.owner_id] = shop_snapshot(product.owner_id)
+    return render_template('catalogue.html', products=products, shops=shops)
 
 
 @app.route('/products/<int:product_id>')
@@ -660,6 +682,7 @@ def product_detail(product_id):
     designs = Design.query.filter_by(user_id=current_user.id).order_by(
         Design.created_at.desc()).all()
     return render_template('product_detail.html', product=product,
+                           shop=shop_snapshot(product.owner_id),
                            latest_design=designs[0] if designs else None,
                            designs=designs, enquiry_kinds=ENQUIRY_KINDS)
 
@@ -689,8 +712,8 @@ def product_enquire(product_id):
         message=message, kind=kind, status='new',
     ))
     db.session.commit()
-    flash('Your ' + kind + ' was sent to ' + product.owner.username + '.',
-          'success')
+    shop = shop_snapshot(product.owner_id)
+    flash('Your ' + kind + ' was sent to ' + shop['name'] + '.', 'success')
     return redirect(url_for('product_detail', product_id=product_id))
 
 
@@ -705,6 +728,21 @@ def product_flag(product_id):
     db.session.commit()
     flash('Thanks — this product was flagged for admin review.', 'success')
     return redirect(url_for('product_detail', product_id=product_id))
+
+
+@app.route('/my/enquiries')
+@login_required
+def my_enquiries():
+    """Enquiries and orders the current customer sent, with live status."""
+    enquiries = Enquiry.query.filter_by(customer_id=current_user.id).order_by(
+        Enquiry.created_at.desc()).all()
+    shops = {}
+    for enquiry in enquiries:
+        if enquiry.shop_owner_id not in shops:
+            shops[enquiry.shop_owner_id] = shop_snapshot(enquiry.shop_owner_id)
+    return render_template('my_enquiries.html', enquiries=enquiries,
+                           shops=shops, kinds=ENQUIRY_KINDS,
+                           statuses=ENQUIRY_STATUSES)
 
 
 @app.route('/shop/enquiries')
