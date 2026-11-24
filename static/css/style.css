@@ -87,6 +87,9 @@ p{margin:0}
 .tag{position:absolute;top:14px;padding:.3rem .75rem;border-radius:999px;font-size:.78rem;font-weight:700;background:rgba(23,32,29,.72);color:#fff;pointer-events:none}
 .tag.l{left:14px}.tag.r{right:14px}
 .compare-caption{margin-top:.9rem;font-size:.88rem;color:var(--ink-3);text-align:center}
+.compare .mask-overlay{display:none;clip-path:inset(0 var(--pos) 0 0);opacity:.55;mix-blend-mode:screen}
+.compare.show-mask .mask-overlay{display:block}
+.mask-controls{text-align:center;margin-top:.5rem}
 
 /* ---------- Sections ---------- */
 .section{padding:88px 0}

@@ -246,6 +246,10 @@ def pdf_walkthrough(page, demo, role, username, capture=False):
     after = page.locator(".compare img.after")
     check(tag + " 4 generated design", after.evaluate("i => i.complete && i.naturalWidth > 0")
           and "Room details" in page.content())
+    if role == "customer":
+        check(tag + " 4 legacy result unchanged",
+              "Custom area edited" not in page.content()
+              and page.locator(".mask-overlay").count() == 0)
     if capture:
         shot(page, "21-step4-result")
 
@@ -278,6 +282,35 @@ def pdf_walkthrough(page, demo, role, username, capture=False):
     page.wait_for_function(
         "document.querySelector('[data-placement-status]').textContent.includes('Saved 0')",
         timeout=10000)
+
+    if role == "customer":
+        # A custom design gets its own label and a mask overlay in Before/After.
+        with sqlite3.connect(DB) as con:
+            owner_id = con.execute("SELECT id FROM user WHERE username=?",
+                                   (demo["cust"],)).fetchone()[0]
+            custom_id = con.execute(
+                "INSERT INTO design (user_id,input_image,mask_image,output_image,prompt,"
+                "position,mask_coords) VALUES (?,?,?,?,?,?,?)",
+                (owner_id, "1927bef4-2d17-4252-b768-b651e25671b2.png",
+                 "mask_1927bef4-2d17-4252-b768-b651e25671b2.png",
+                 "output_1927bef4-2d17-4252-b768-b651e25671b2.png",
+                 "browser custom area result check", "custom", "25,25,75,75"),
+            ).lastrowid
+        page.goto(BASE + "/design/" + str(custom_id))
+        page.wait_for_load_state("networkidle")
+        check(tag + " 4 custom label", "Custom area edited" in page.content())
+        check(tag + " 4 mask overlay with before/after",
+              page.locator(".mask-overlay").is_visible()
+              and page.locator(".compare img.after").is_visible()
+              and page.locator(".tag.l").inner_text() == "Before"
+              and page.locator(".tag.r").inner_text() == "After")
+        page.click("#toggleMask")
+        hidden = not page.locator(".mask-overlay").is_visible()
+        pressed = page.locator("#toggleMask").get_attribute("aria-pressed")
+        check(tag + " 4 hide mask", hidden and pressed == "false",
+              (hidden, pressed, page.locator("[data-compare]").get_attribute("class")))
+        page.click("#toggleMask")
+        check(tag + " 4 show mask", page.locator(".mask-overlay").is_visible())
 
     # Step 6 — product details and shop connection.
     pid = demo["products"][0][0]

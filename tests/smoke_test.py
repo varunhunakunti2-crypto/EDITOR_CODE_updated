@@ -163,11 +163,14 @@ def main():
           ["room_type", "style", "budget", "preferences", "width_m",
            "length_m", "height_m", "detection_notes", "placement_json",
            "mask_coords"]))
+    legacy_pages = [request(admin_f, f"/design/{design_id}") for design_id in legacy_ids]
     check("old 8 designs still open", len(legacy_ids) == 8 and all(
-          request(admin_f, f"/design/{design_id}")[0] == 200 for design_id in legacy_ids),
-          legacy_ids)
+          page[0] == 200 for page in legacy_pages), legacy_ids)
     check("old designs keep blank mask coords", blank_coords == len(legacy_ids),
           blank_coords)
+    check("legacy result pages have no custom UI", all(
+          "Custom area edited" not in page[2] and "mask-overlay" not in page[2]
+          for page in legacy_pages))
 
     # --- Analysis API (Step 2/3) -----------------------------------------
 

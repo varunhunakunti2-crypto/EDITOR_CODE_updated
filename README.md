@@ -132,7 +132,10 @@ shows the room summary. Two edit modes are supported:
 - **Redesign the whole room** — a fully white mask (`whole_room` position)
 
 Masks are saved as lossless PNGs: the selected area is exactly white and every
-pixel outside it is black.
+pixel outside it is black. A custom-area result is labelled **Custom area edited**
+and the Before/After comparison shows the mask over the original photo, with a
+button to hide or show it. Older designs keep their original result layout with
+no custom label or mask overlay.
 
 Furniture arrangements are saved with `POST /design/<id>/placement` (JSON with
 an `items` list; design owner or admin only) and restored when the result page
@@ -239,10 +242,10 @@ gitignored.
 
 Start the app first (`python app.py`), then run the suites from the project folder:
 
-    python tests/smoke_test.py       # 165 HTTP/DB checks, standard library only
-    python tests/browser_check.py    # 57 real-browser checks + 26 screenshots
+    python tests/smoke_test.py       # 166 HTTP/DB checks, standard library only
+    python tests/browser_check.py    # 62 real-browser checks + 26 screenshots
     python tests/room_analysis_check.py  # OpenCV measurement checks, no server needed
-    python tests/backend_check.py    # 51 in-process API/DB checks, stubbed AI, no server needed
+    python tests/backend_check.py    # 52 in-process API/DB checks, stubbed AI, no server needed
     python tests/flow_check.py       # full analyze -> design -> result flow in a browser
     python tests/shop_flow_check.py  # shop register -> verify -> catalogue/edit/enquiry flow
     python tests/admin_check.py      # verification, moderation and report counts, no server needed
@@ -251,7 +254,8 @@ Start the app first (`python app.py`), then run the suites from the project fold
 `smoke_test.py` verifies public pages, role-based redirects and guards on every
 new route for all four roles, the design schema fields (including `mask_coords`),
 that the eight oldest designs still open with blank coordinates after the
-migration, the analysis API (including manual overrides and errors), design
+migration and show no custom-area UI, the analysis API (including manual
+overrides and errors), design
 result fields, placement save/load with
 rotation, shop verification/revocation, product edit/availability, enquiry details
 and flagging, plus product upload/list/detail/delete, catalogue access, admin lists
@@ -262,7 +266,8 @@ steps of the project PDF (login, room upload, CV measurement, design generation,
 interactive furniture with rotation, and product/shop connection) as each of the
 four roles, checks the custom-area control, drag-select overlay, live box,
 normalized hidden field, tiny-drag rejection, clear button and preset switching,
-and writes a screenshot for every customer step plus one per other role.
+checks the custom-area result label and mask overlay toggle, and writes a
+screenshot for every customer step plus one per other role.
 `room_analysis_check.py` generates three
 synthetic rooms with known dimensions, checks the measured size, overlays and
 manual overrides, and also analyses any uploaded room photos.
@@ -298,12 +303,13 @@ filter and backfilled by `upgrade_schema()` on startup.
 Verified with the app running at `http://localhost:5000` and the local inpainting
 model loaded (`/model-status` reports `runwayml/stable-diffusion-inpainting`):
 
-- `python tests/smoke_test.py` — **165 passed, 0 failed**.
-- `python tests/browser_check.py` — **57 passed, 0 failed**, with zero browser
+- `python tests/smoke_test.py` — **166 passed, 0 failed**.
+- `python tests/browser_check.py` — **62 passed, 0 failed**, with zero browser
   console errors and zero failed requests.
-- `python tests/backend_check.py` — **51 passed, 0 failed**, including custom
+- `python tests/backend_check.py` — **52 passed, 0 failed**, including custom
   coordinate validation, normalized browser values, storage, pixel-exact PNG
-  masks, preserved nine-zone masks and idempotent schema upgrade.
+  masks, the custom result label/overlay, preserved nine-zone masks and
+  idempotent schema upgrade.
 - Manual six-step click-through in a real browser as a customer: register/login →
   upload a room photo → **Analyze room** (overlay plus editable 6.16 × 8.01 × 2.8 m
   estimate) → generate a design → add, rotate, save and reload furniture → open

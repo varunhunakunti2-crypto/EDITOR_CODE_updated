@@ -318,7 +318,10 @@ if custom_design:
     check('custom design mask PNG has white box only at coords',
           mask_is_exact(mask, (128, 128, 383, 383)))
     html = client.get('/design/%d' % custom_design.id).get_data(as_text=True)
-    check('result page labels custom area', 'custom area' in html.lower())
+    check('result page labels custom area', 'Custom area edited' in html)
+    check('result page shows mask overlay with before/after',
+          'class="mask-overlay"' in html and 'Before' in html and 'After' in html
+          and custom_design.mask_image in html and 'id="toggleMask"' in html)
 
 # The browser drag editor posts normalized 0-1 coords in the hidden field.
 res = client.post('/design', data={

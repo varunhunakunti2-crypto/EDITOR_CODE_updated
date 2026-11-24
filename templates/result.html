@@ -6,23 +6,30 @@
   <div class="page-head">
     <div>
       <h1>Your design is ready</h1>
-      <p>{{ d.prompt }} · placed at <strong>{{ position_label|lower }}</strong>{% if room_summary %} · {{ room_summary }}{% endif %}</p>
+      <p>{{ d.prompt }} · {% if d.position == 'custom' %}<strong class="custom-area-label">Custom area edited</strong>{% else %}placed at <strong>{{ position_label|lower }}</strong>{% endif %}{% if room_summary %} · {{ room_summary }}{% endif %}</p>
     </div>
     <a href="{{ url_for('design') }}" class="btn btn-primary btn-lg">{{ icon('plus') }} New design</a>
   </div>
 
   {% set before = url_for('static', filename='uploads/input/' + d.input_image) %}
   {% set after = url_for('static', filename='uploads/output/' + d.output_image) %}
+  {% set mask_url = url_for('static', filename='uploads/mask/' + d.mask_image) if d.mask_image else '' %}
+  {% set show_mask = d.position == 'custom' and d.mask_image %}
   <div class="result-grid">
     <div>
-      <div class="compare" data-compare>
+      <div class="compare{% if show_mask %} show-mask{% endif %}" data-compare>
         <img src="{{ before }}" alt="Original room">
         <img class="after" src="{{ after }}" alt="Generated design">
+        {% if show_mask %}<img class="mask-overlay" src="{{ mask_url }}" alt="Edited area mask">{% endif %}
         <span class="tag l">Before</span><span class="tag r">After</span>
         <div class="handle"></div>
         <input type="range" min="0" max="100" value="50" aria-label="Compare before and after">
       </div>
-      <p class="compare-caption">Drag to compare.</p>
+      <p class="compare-caption">Drag to compare.{% if show_mask %} The highlighted box is the custom area that was edited.{% endif %}</p>
+      {% if show_mask %}
+      <p class="mask-controls"><button type="button" class="btn btn-ghost" id="toggleMask"
+        aria-pressed="true">{{ icon('image') }} <span data-mask-label>Hide mask</span></button></p>
+      {% endif %}
       <p style="text-align:center;margin-top:.6rem"><a href="{{ after }}" download>{{ icon('download') }} Download result</a></p>
     </div>
 
@@ -125,4 +132,17 @@
 {% block scripts %}
 <script type="application/json" id="saved-placement">{{ placement|tojson }}</script>
 <script src="{{ url_for('static', filename='JS/placement.js') }}"></script>
+{% if d.position == 'custom' and d.mask_image %}
+<script>
+(function(){
+  const button = document.getElementById('toggleMask');
+  const compare = document.querySelector('[data-compare]');
+  button.addEventListener('click', () => {
+    const visible = compare.classList.toggle('show-mask');
+    button.setAttribute('aria-pressed', String(visible));
+    button.querySelector('[data-mask-label]').textContent = visible ? 'Hide mask' : 'Show mask';
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}
