@@ -20,6 +20,9 @@ AVAILABILITY = {
     "made_to_order": "Made to order",
 }
 
+ENQUIRY_KINDS = {"enquiry": "Enquiry", "order": "Order"}
+ENQUIRY_STATUSES = {"new": "New", "responded": "Responded", "closed": "Closed"}
+
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -52,6 +55,18 @@ class Design(db.Model):
     position = db.Column(db.String(30), default='middle_center')
     location = db.Column(db.String(200), default='')
     places_json = db.Column(db.Text, default='')
+
+    # Room details captured before generation (all optional for older rows).
+    room_type = db.Column(db.String(60), default='', server_default='')
+    style = db.Column(db.String(60), default='', server_default='')
+    budget = db.Column(db.String(80), default='', server_default='')
+    preferences = db.Column(db.Text, default='', server_default='')
+    width_m = db.Column(db.Float)
+    length_m = db.Column(db.Float)
+    height_m = db.Column(db.Float)
+    detection_notes = db.Column(db.Text, default='', server_default='')
+    placement_json = db.Column(db.Text, default='', server_default='')
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow,
                            server_default=db.func.current_timestamp())
 
@@ -77,6 +92,54 @@ class Product(db.Model):
         return AVAILABILITY.get(self.availability, self.availability or "In stock")
 
 
+class ShopProfile(db.Model):
+    """Business details submitted by a shop owner (one profile per owner)."""
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False,
+                         unique=True, index=True)
+    shop_name = db.Column(db.String(120), nullable=False, default='')
+    city = db.Column(db.String(100), default='')
+    address = db.Column(db.Text, default='')
+    phone = db.Column(db.String(40), default='')
+    verified = db.Column(db.Boolean, default=False, server_default='0')
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow,
+                             server_default=db.func.current_timestamp())
+
+    owner = db.relationship('User', backref=db.backref('shop_profile', uselist=False))
+
+
+class Enquiry(db.Model):
+    """A message from a customer to a shop owner about a product or design."""
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'),
+                           nullable=False, index=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('user.id'),
+                            nullable=False, index=True)
+    shop_owner_id = db.Column(db.Integer, db.ForeignKey('user.id'),
+                              nullable=False, index=True)
+    design_id = db.Column(db.Integer, db.ForeignKey('design.id'), index=True)
+    message = db.Column(db.Text, default='')
+    status = db.Column(db.String(20), default='new', server_default='new')
+    kind = db.Column(db.String(20), default='enquiry', server_default='enquiry')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow,
+                           server_default=db.func.current_timestamp())
+
+    product = db.relationship('Product', backref='enquiries')
+    design = db.relationship('Design', backref='enquiries')
+    customer = db.relationship('User', foreign_keys=[customer_id],
+                               backref='sent_enquiries')
+    shop_owner = db.relationship('User', foreign_keys=[shop_owner_id],
+                                 backref='received_enquiries')
+
+    @property
+    def kind_label(self):
+        return ENQUIRY_KINDS.get(self.kind, self.kind or "Enquiry")
+
+    @property
+    def status_label(self):
+        return ENQUIRY_STATUSES.get(self.status, self.status or "New")
+
+
 def upgrade_schema():
     """Add newer columns to databases created by an older version."""
     from sqlalchemy import inspect, text
@@ -86,11 +149,25 @@ def upgrade_schema():
         'position': "VARCHAR(30) DEFAULT 'middle_center'",
         'location': "VARCHAR(200) DEFAULT ''",
         'places_json': "TEXT DEFAULT ''",
+        'room_type': "VARCHAR(60) DEFAULT ''",
+        'style': "VARCHAR(60) DEFAULT ''",
+        'budget': "VARCHAR(80) DEFAULT ''",
+        'preferences': "TEXT DEFAULT ''",
+        'width_m': "FLOAT",
+        'length_m': "FLOAT",
+        'height_m': "FLOAT",
+        'detection_notes': "TEXT DEFAULT ''",
+        'placement_json': "TEXT DEFAULT ''",
     }
     with db.engine.begin() as conn:
         for name, ddl in wanted.items():
             if name not in design_columns:
                 conn.execute(text(f'ALTER TABLE design ADD COLUMN {name} {ddl}'))
+
+        # create_all() normally does this, but keep upgrades self-contained so
+        # an existing database gains the new tables without touching old rows.
+        ShopProfile.__table__.create(bind=conn, checkfirst=True)
+        Enquiry.__table__.create(bind=conn, checkfirst=True)
 
         # Existing accounts pre-date roles and become customers.
         user_columns = {c['name'] for c in inspector.get_columns('user')}
