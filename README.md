@@ -115,27 +115,33 @@ and optional `reference_pixels`; it returns the same dimensions as JSON plus an
 The design form now records room type, style, budget, preferences and measured
 dimensions. `prompt_builder.py` combines them with the user's prompt before
 inpainting; the original prompt stays in the database row and the result page
-shows the room summary. Two edit modes are supported:
+shows the room summary. Three edit modes are supported:
 
-- **Add one item in a zone** — the existing nine-zone mask
-- **Custom area** — choose `Custom area` and drag a box directly on the photo
-  preview. `static/JS/region_mask.js` draws a live rectangle, saves normalized
-  `x1,y1,x2,y2` values (0–1) in the hidden `mask_coords` field, and offers a
-  **Clear selection** button. Tiny drags are rejected with a friendly message;
-  the box must cover 1–85% of the image. The server accepts both normalized and
-  0–100 percentage values; missing, reversed, out-of-bounds or otherwise invalid
-  coordinates fall back to the centre zone. Valid values are stored in
-  `Design.mask_coords`; older rows keep an empty value and continue to open
-  normally. Selecting a preset clears the custom coordinates, so ordinary zones
-  keep their original nine-zone mask. The legacy `static/JS/mask.js` is unused
-  and unchanged.
-- **Redesign the whole room** — a fully white mask (`whole_room` position)
+- **Add one item in a zone** — the existing nine-zone mask.
+- **Custom area** — choose `Custom area` and drag a rectangle directly on the
+  photo preview. `static/JS/region_mask.js` draws a live box, writes normalized
+  `x1,y1,x2,y2` values into the hidden `mask_coords` field, and offers a
+  **Clear selection** button.
+- **Redesign the whole room** — a fully white mask (`whole_room` position).
+
+### Custom-area limits
+
+| Rule | Behaviour |
+| --- | --- |
+| Coordinates | `x1,y1,x2,y2` measured from the top-left; `x2 > x1` and `y2 > y1` |
+| Accepted formats | normalized `0–1` from the browser overlay, or `0–100` percentages |
+| Minimum size | 1% of the image area; the overlay also rejects drags with either side under 2% |
+| Maximum size | 85% of the image area, leaving context around the edit |
+| Invalid input | missing, reversed, out-of-bounds, too small or too large values fall back to the centre zone with a friendly flash message |
+| Storage | valid values are normalized to percentages such as `25,25,75,75` in `Design.mask_coords`; older rows stay empty |
+| Presets | switching to any preset clears the custom coordinates and uses its original nine-zone mask |
 
 Masks are saved as lossless PNGs: the selected area is exactly white and every
 pixel outside it is black. A custom-area result is labelled **Custom area edited**
 and the Before/After comparison shows the mask over the original photo, with a
 button to hide or show it. Older designs keep their original result layout with
-no custom label or mask overlay.
+no custom label or mask overlay. The legacy `static/JS/mask.js` is unused and
+unchanged.
 
 Furniture arrangements are saved with `POST /design/<id>/placement` (JSON with
 an `items` list; design owner or admin only) and restored when the result page
