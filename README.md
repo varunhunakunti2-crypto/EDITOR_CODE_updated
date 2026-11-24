@@ -7,7 +7,27 @@ furniture placement.
 
 **Repository:** https://github.com/varunhunakunti2-crypto/EDITOR_CODE_updated
 
-## Quick start
+## Project flow (from the PDF)
+
+The project brief describes one AI-powered platform with three main dashboards —
+Admin, Customer/Interior Designer and Furniture/Interior Shop Owner — that brings
+computer vision, generated room previews, interactive space planning and an online
+furniture catalogue together. The PDF's "Complete Working Flow" has six numbered
+steps, all implemented here:
+
+| Step | PDF step | What happens in this app |
+| --- | --- | --- |
+| 1 | **User Login** — Customer / Interior Designer / Shop Owner / Admin | Sign up with one of the three selectable roles; the first account becomes Admin. Each role lands on its own dashboard. |
+| 2 | **Upload Room Image** — bedroom, kitchen, living room or another space | `/design` accepts a PNG/JPG/JPEG room photo plus a typed (or spoken) prompt. |
+| 3 | **AI Room Detection and Measurement** — CV identifies walls, corners and boundaries and estimates dimensions using a reference | **Analyze room** calls `/api/analyze-room`; OpenCV returns width/length/height, confidence and an annotated overlay; the inputs stay editable. |
+| 4 | **AI Interior Design Generation** — use preferences, room dimensions, budget and selected style | The form records room type, style, budget, preferences, dimensions and mode (one zone or whole room); `prompt_builder.py` builds the generation prompt and local Stable Diffusion inpainting produces the preview. |
+| 5 | **Interactive Drag-and-Drop Furniture** — move, rotate, resize and rearrange products from registered shops | The result page palette shows verified products; items can be dragged, moved, resized and rotated, then saved to the design and exported as a PNG. |
+| 6 | **Product Details and Shop Connection** — prices, dimensions, descriptions, shop details and contact/enquire | `/products` and `/products/<id>` show verified shop identity and contact details; the **Ask shop owner** form creates an in-app enquiry; `/my/enquiries` tracks its status. |
+
+Screenshots of every step are linked in [Screenshots](#screenshots); `tests/browser_check.py`
+clicks through all six steps as all four roles.
+
+## Setup
     git clone https://github.com/varunhunakunti2-crypto/EDITOR_CODE_updated.git
     cd EDITOR_CODE_updated
     python -m venv .venv && .venv\Scripts\activate      # Windows
@@ -16,8 +36,18 @@ furniture placement.
     python app.py        # open http://localhost:5000 (use localhost — the microphone needs it)
 
 On macOS/Linux use `source .venv/bin/activate` and `cp .env.example .env`.
-The first design request downloads the inpainting model (a few GB) and loads it
-in the background; `/model-status` reports progress.
+Python 3.10+ is recommended; `pip install -r requirements.txt` installs Flask,
+OpenCV, PyTorch, Diffusers, SpeechRecognition and the Gemini client.
+
+1. Create `.env` from `.env.example`. Set `SECRET_KEY`; Gemini and Replicate are optional (see below).
+2. Start the app with `python app.py` and open `http://localhost:5000` — use `localhost` rather than `127.0.0.1` if you want the microphone button to work.
+3. Register the first account: it automatically becomes **Admin**. Admin cannot be self-selected at signup.
+4. A shop owner opens `/shop/profile`, saves shop name/city/address/phone, then an admin verifies the shop at `/admin/shops`. Only verified shops appear in the public catalogue.
+5. Customers/designers can now follow the six steps above. `/model-status` reports model loading; the first design request downloads the inpainting model (a few GB) and loads it in the background.
+
+For the automated suites, also install Chromium:
+
+    pip install playwright && python -m playwright install chromium
 
 ## Settings (.env)
 
@@ -129,11 +159,51 @@ is reopened. Each item stores `src`, `name`, `rx`, `ry`, `scale` and `rotation`
 
 Admin routes are role-protected; non-admins are redirected to their dashboard.
 
-## New features
-- Voice or typed prompt: mic button records in the browser, the server transcribes it with SpeechRecognition (Google web recognizer, needs internet).
-- Nine placement buttons (top/middle/bottom x left/centre/right). The chosen spot becomes the white inpainting mask, so only that area is edited.
-- Enter a city/area (or "Use my location") and Gemini suggests nearby stores for the item, shown on the result page with Google Maps links.
-- Old databases are upgraded automatically with the new columns.
+## Feature summary
+
+- **Roles and dashboards** — Admin (`/admin`), Customer/Interior Designer
+  (`/dashboard`) and Shop Owner (`/shop`), with role guards on every route and
+  admin override.
+- **Room measurement** — OpenCV edge/line/corner detection, a 2 m reference by
+  default, editable overrides, annotated overlay and a confidence note.
+- **Room-aware generation** — room type, style, budget, preferences and measured
+  dimensions are combined with the user's prompt; the original prompt is kept in
+  the database. Nine-zone masks or a whole-room redesign are supported.
+- **Furniture placement** — verified products, custom images, drag/move/resize,
+  ↺/↻ or Shift+wheel rotation, save/reload persistence and rotated PNG download.
+- **Shop connection** — verified shop identity and contact details, product
+  edit/availability, **Ask shop owner** enquiries and customer status tracking.
+- **Moderation** — shop verification/revocation, product flag/hide/remove, report
+  counts and an activity panel on the admin dashboard and reports page.
+- **Extras** — voice or typed prompt (mic uses the Google web recognizer),
+  optional Gemini nearby-store suggestions with Maps links, and automatic
+  upgrades of older databases with the new columns.
+
+## Limitations
+
+- **Dimensions are approximate.** A single photo cannot give true scale: width
+  comes from a reference object (a 2 m door by default) and depth/length is
+  estimated from typical room proportions. The result page shows an accuracy
+  disclaimer; enter known measurements in the width/length/height inputs before
+  ordering furniture or planning construction.
+- **The model is downloaded on first use.** Inpainting uses a public Hugging Face
+  model (a few GB). The first design request can take a while; CPU generation is
+  much slower than GPU (`SD_DEVICE=auto` uses CUDA when available). Startup does
+  not block, `/model-status` shows progress, and a failed load is retried on the
+  next request.
+- **Gemini is optional.** Without `GEMINI_API_KEY` (or without internet) the app
+  still generates designs and shows the catalogue; only the nearby-store
+  suggestions are unavailable. Suggested shops, prices and opening hours are
+  AI-generated and must be confirmed with the shop.
+- **Enquiries are in-app only.** Messages go to the shop owner's
+  `/shop/enquiries` inbox and the customer sees the status on `/my/enquiries`.
+  There is no email/SMS notification, live chat, payment, checkout or delivery
+  tracking; shop owners update statuses manually.
+- **Voice input needs internet** (Google web recognizer) and browser microphone
+  permission; typing a prompt works offline.
+- **Data stays local.** SQLite data and uploaded images live under `instance/`
+  and `static/uploads/`; there is no external hosting or multi-user deployment
+  layer beyond the local Flask server.
 
 ## Project layout
 
@@ -197,6 +267,22 @@ The suites create temporary demo accounts, products and a design, then delete
 them (and their uploaded images) when they finish, leaving existing data intact.
 Older rows with a NULL `created_at` are rendered safely via the `date` template
 filter and backfilled by `upgrade_schema()` on startup.
+
+## Final acceptance (this build)
+
+Verified with the app running at `http://localhost:5000` and the local inpainting
+model loaded (`/model-status` reports `runwayml/stable-diffusion-inpainting`):
+
+- `python tests/smoke_test.py` — **163 passed, 0 failed**.
+- `python tests/browser_check.py` — **48 passed, 0 failed**, with zero browser
+  console errors and zero failed requests.
+- Manual six-step click-through in a real browser as a customer: register/login →
+  upload a room photo → **Analyze room** (overlay plus editable 6.16 × 8.01 × 2.8 m
+  estimate) → generate a design → add, rotate, save and reload furniture → open
+  the catalogue/product page, send **Ask shop owner**, and verify the message on
+  `/my/enquiries`.
+- The temporary click-through account, design, enquiry and uploaded files were
+  removed; the pre-existing data counts were unchanged.
 
 ## Screenshots
 
