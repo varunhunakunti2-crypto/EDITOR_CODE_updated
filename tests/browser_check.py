@@ -233,6 +233,92 @@ def pdf_walkthrough(page, demo, role, username, capture=False):
         page.locator('input[name=position][value=middle_center]').check()
         check(tag + " 2 preset ignores custom",
               not page.input_value("#mask_coords") and not canvas.is_visible())
+
+        # Freehand paint: strokes, eraser, touch/pen, clear and preset fallback.
+        check(tag + " 2 paint option and default preset",
+              page.locator('input[name=position][value=painted]').count() == 1
+              and page.locator('input[name=position][value=middle_center]').is_checked())
+        page.locator('input[name=position][value=painted]').check()
+        paint_canvas = page.locator("#paintCanvas")
+        check(tag + " 2 paint controls",
+              page.locator("#paintControls").is_visible()
+              and paint_canvas.is_visible()
+              and not page.locator("#zone").is_visible())
+        paint_box = paint_canvas.bounding_box()
+
+        def paint_stroke(x1, y1, x2, y2):
+            page.mouse.move(paint_box["x"] + paint_box["width"] * x1,
+                            paint_box["y"] + paint_box["height"] * y1)
+            page.mouse.down()
+            page.mouse.move(paint_box["x"] + paint_box["width"] * x2,
+                            paint_box["y"] + paint_box["height"] * y2, steps=8)
+            page.mouse.up()
+
+        def white_pixels():
+            return page.evaluate("""() => {
+                const c = document.getElementById('maskExportCanvas');
+                const data = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+                let count = 0;
+                for (let i = 0; i < data.length; i += 4) if (data[i] > 127) count++;
+                return count;
+            }""")
+
+        paint_stroke(0.20, 0.25, 0.70, 0.25)
+        first_count = white_pixels()
+        check(tag + " 2 painted stroke exports PNG",
+              page.input_value("#painted_mask").startswith("data:image/png;base64,")
+              and first_count > 0, first_count)
+
+        page.click("#eraserMode")
+        check(tag + " 2 eraser mode",
+              page.locator("#eraserMode").get_attribute("aria-pressed") == "true"
+              and page.locator("#brushMode").get_attribute("aria-pressed") == "false")
+        paint_stroke(0.38, 0.25, 0.52, 0.25)
+        erased_count = white_pixels()
+        check(tag + " 2 eraser subtracts", erased_count < first_count,
+              (first_count, erased_count))
+
+        page.click("#brushMode")
+        paint_stroke(0.25, 0.45, 0.75, 0.45)
+        multi_count = white_pixels()
+        check(tag + " 2 multiple strokes allowed", multi_count > erased_count,
+              (erased_count, multi_count))
+
+        def synthetic_stroke(pointer_type, y):
+            page.evaluate("""([pointerType, y]) => {
+                const c = document.getElementById('paintCanvas');
+                const r = c.getBoundingClientRect();
+                const send = (type, fx) => c.dispatchEvent(new PointerEvent(type, {
+                    bubbles: true, cancelable: true,
+                    clientX: r.left + r.width * fx, clientY: r.top + r.height * y,
+                    pointerType, pointerId: 42, isPrimary: true,
+                    buttons: type === 'pointerup' ? 0 : 1
+                }));
+                send('pointerdown', 0.20);
+                send('pointermove', 0.35);
+                send('pointerup', 0.50);
+            }""", [pointer_type, y])
+
+        before_touch = white_pixels()
+        synthetic_stroke("touch", 0.62)
+        after_touch = white_pixels()
+        synthetic_stroke("pen", 0.74)
+        after_pen = white_pixels()
+        check(tag + " 2 touch and pen strokes",
+              after_touch > before_touch and after_pen > after_touch,
+              (before_touch, after_touch, after_pen))
+
+        shot(page, "14-painted-area")
+        shot_path = os.path.join("docs", "screenshots", "14-painted-area.png")
+        check(tag + " 2 painted area screenshot", os.path.isfile(shot_path), shot_path)
+
+        page.click("#clearPaint")
+        check(tag + " 2 clear painting",
+              not page.input_value("#painted_mask") and white_pixels() == 0)
+        page.locator('input[name=position][value=middle_center]').check()
+        check(tag + " 2 preset ignores painted data",
+              not page.input_value("#painted_mask") and not paint_canvas.is_visible()
+              and page.locator("#zone").is_visible())
     if capture:
         shot(page, "19-step2-upload")
 
@@ -320,6 +406,28 @@ def pdf_walkthrough(page, demo, role, username, capture=False):
               (hidden, pressed, page.locator("[data-compare]").get_attribute("class")))
         page.click("#toggleMask")
         check(tag + " 4 show mask", page.locator(".mask-overlay").is_visible())
+
+        with sqlite3.connect(DB) as con:
+            painted_id = con.execute(
+                "INSERT INTO design (user_id,input_image,mask_image,output_image,prompt,"
+                "position,mask_coords) VALUES (?,?,?,?,?,?,?)",
+                (owner_id, "1927bef4-2d17-4252-b768-b651e25671b2.png",
+                 "mask_1927bef4-2d17-4252-b768-b651e25671b2.png",
+                 "output_1927bef4-2d17-4252-b768-b651e25671b2.png",
+                 "browser painted area result check", "painted", ""),
+            ).lastrowid
+        page.goto(BASE + "/design/" + str(painted_id))
+        page.wait_for_load_state("networkidle")
+        check(tag + " 4 painted label", "Custom painted area edited" in page.content())
+        check(tag + " 4 painted mask preview",
+              page.locator(".mask-overlay").is_visible()
+              and page.locator(".mask-preview").count() == 1
+              and page.locator(".mask-preview").is_visible())
+        page.click("#toggleMask")
+        painted_hidden = not page.locator(".mask-overlay").is_visible()
+        painted_pressed = page.locator("#toggleMask").get_attribute("aria-pressed")
+        check(tag + " 4 painted mask toggle", painted_hidden and painted_pressed == "false",
+              (painted_hidden, painted_pressed))
 
     # Step 6 — product details and shop connection.
     pid = demo["products"][0][0]

@@ -124,6 +124,26 @@
           <p class="hint">Normalized coordinates (0–1) are saved automatically. The box must
             cover 1–85% of the photo; very small drags are ignored.</p>
         </div>
+        <div class="field" id="paintControls" hidden>
+          <label>Brush size
+            <span class="brush-row">
+              <input type="range" id="brushSize" min="8" max="96" value="36"
+                     aria-label="Brush size in pixels">
+              <span class="region-readout" id="brushSizeValue">36 px</span>
+            </span>
+          </label>
+          <div class="paint-actions">
+            <button type="button" class="btn btn-ghost paint-tool" id="brushMode"
+                    aria-pressed="true">{{ icon('wand') }} Brush</button>
+            <button type="button" class="btn btn-ghost paint-tool" id="eraserMode"
+                    aria-pressed="false">{{ icon('x') }} Eraser</button>
+            <button type="button" class="btn btn-ghost" id="clearPaint">Clear painting</button>
+          </div>
+          <p class="hint" id="paintStatus" role="status" aria-live="polite">
+            Paint over the area to edit. Eraser removes painted strokes; black areas stay unchanged.
+          </p>
+          <input type="hidden" id="painted_mask" name="painted_mask">
+        </div>
         </div>
       </section>
 
@@ -155,6 +175,8 @@
         <img id="previewImg" alt="Preview of your uploaded room" hidden>
         <div class="zone" id="zone"><span>Object goes here</span></div>
         <canvas id="regionCanvas" aria-label="Drag to select a custom area"></canvas>
+        <canvas id="paintCanvas" aria-label="Paint the area to edit"></canvas>
+        <canvas id="maskExportCanvas" width="512" height="512" hidden></canvas>
       </div>
       <p class="stage-note">Your photo is resized to a square for the AI, so the preview shows the same crop.</p>
     </aside>
@@ -172,6 +194,7 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='JS/region_mask.js') }}"></script>
+<script src="{{ url_for('static', filename='JS/freehand_mask.js') }}"></script>
 <script>
 (function(){
   const input = document.getElementById('imageInput');
@@ -186,7 +209,10 @@
     if(!/^image\/(png|jpe?g)$/.test(file.type)){ alert('Please choose a PNG or JPG image.'); input.value=''; return; }
     if(file.size > MAX){ alert('That file is larger than 16 MB. Please choose a smaller photo.'); input.value=''; return; }
     const r = new FileReader();
-    r.onload = e => { img.src = e.target.result; img.hidden = false; stage.classList.add('has-image'); };
+    r.onload = e => {
+      img.src = e.target.result; img.hidden = false; stage.classList.add('has-image');
+      requestAnimationFrame(() => { region.resize(); paint.resize(); });
+    };
     r.readAsDataURL(file);
     title.textContent = file.name;
   }
@@ -217,7 +243,7 @@
     zone.classList.toggle('flip', !!flip);  // keep the label inside the photo
   }
   function presetZone(value){
-    if(value === 'custom' || value === 'whole_room') value = 'middle_center';
+    if(value === 'custom' || value === 'painted' || value === 'whole_room') value = 'middle_center';
     const [row, col] = value.split('_');
     const x = axis(COLS[col], ZW), y = axis(ROWS[row], ZH);
     setZone(100 * x / IMG, 100 * y / IMG, 100 * ZW / IMG, 100 * ZH / IMG,
@@ -237,10 +263,38 @@
     onReset: () => presetZone('middle_center'),
   });
 
+  // Freehand paint overlay; the hidden 512x512 canvas exports a PNG on submit.
+  const paint = new window.FreehandMask({
+    canvas: document.getElementById('paintCanvas'),
+    exportCanvas: document.getElementById('maskExportCanvas'),
+    field: document.getElementById('painted_mask'),
+    slider: document.getElementById('brushSize'),
+    brushValue: document.getElementById('brushSizeValue'),
+    brushButton: document.getElementById('brushMode'),
+    eraserButton: document.getElementById('eraserMode'),
+    clearButton: document.getElementById('clearPaint'),
+    status: document.getElementById('paintStatus'),
+    stage: stage,
+    form: document.getElementById('designForm'),
+  });
+
+  const paintControls = document.getElementById('paintControls');
+
   function placeZone(value){
     const custom = value === 'custom';
+    const painted = value === 'painted';
     customRow.hidden = !custom;
-    region.setEnabled(custom);
+    paintControls.hidden = !painted;
+    region.setEnabled(!painted && custom);
+    paint.setEnabled(painted);
+    zone.classList.toggle('paint-hidden', painted);
+    if(painted){
+      if(region.coords) region.clear();
+      paint.resize();
+      return;
+    }
+    // Switching away from paint (including any preset) discards painted data.
+    if(paint.hasStrokes()) paint.clear();
     if(custom){
       if(region.coords) region.repaint();
       else presetZone('middle_center');
@@ -257,10 +311,15 @@
 
   document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', () => {
     const whole = document.querySelector('input[name=mode]:checked').value === 'whole';
-    const custom = document.querySelector('input[name=position]:checked').value === 'custom';
+    const checked = document.querySelector('input[name=position]:checked').value;
+    const custom = checked === 'custom';
+    const painted = checked === 'painted';
     document.getElementById('zoneControls').hidden = whole;
     zone.hidden = whole;
+    zone.classList.toggle('paint-hidden', whole || painted);
     region.setEnabled(!whole && custom);
+    paint.setEnabled(!whole && painted);
+    if(whole && paint.hasStrokes()) paint.clear();
   }));
 
   // ---- Measure room: POST the photo to /api/analyze-room ----

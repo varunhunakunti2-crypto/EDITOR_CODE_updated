@@ -1,10 +1,15 @@
-"""Mask placement: nine named zones, whole room, or a custom rectangle.
+"""Mask placement: nine zones, a custom rectangle, freehand paint, or whole room.
 
 Custom coordinates are four percentages, ``x1,y1,x2,y2``, measured from the
 top-left of the square working image. They are validated before use; anything
 missing, reversed, out of bounds, too small or too large falls back to the
-centre zone.
+centre zone. Freehand paint arrives as a PNG data URL from the hidden browser
+canvas; it is decoded, thresholded and saved through the same ``mask_image``
+column, with invalid or empty data falling back to the centre zone.
 """
+import base64
+import binascii
+import io
 import math
 
 from PIL import Image, ImageDraw
@@ -21,21 +26,28 @@ POSITIONS = {
     "middle_left": (0, 1), "middle_center": (1, 1), "middle_right": (2, 1),
     "bottom_left": (0, 2), "bottom_center": (1, 2), "bottom_right": (2, 2),
     "custom": (1, 1),
+    "painted": (1, 1),   # sentinel: freehand PNG mask, centre only as fallback
 }
 LABELS = {
     "top_left": "Top left", "top_center": "Top centre", "top_right": "Top right",
     "middle_left": "Middle left", "middle_center": "Centre", "middle_right": "Middle right",
     "bottom_left": "Bottom left", "bottom_center": "Bottom centre", "bottom_right": "Bottom right",
     "custom": "Custom area",
+    "painted": "Paint area",
     "whole_room": "Whole room",
 }
 DEFAULT_POSITION = "middle_center"
+PAINTED_POSITION = "painted"
 
 # Percent bounds for the custom rectangle and its area (as a fraction of the image).
 COORD_MIN = 0.0
 COORD_MAX = 100.0
 MIN_AREA = 0.01        # 1% of the image, e.g. 10x10 percent
 MAX_AREA = 0.85        # leave at least 15% of the room visible as context
+
+# Guardrails for the browser's hidden PNG canvas (512x512 binary PNGs are tiny).
+MAX_PAINT_DATA = 8 * 1024 * 1024
+MAX_PAINT_DIMENSION = 2048
 
 
 def normalize_position(value):
@@ -144,6 +156,66 @@ def build_custom_mask(coords, size=(IMG_SIZE, IMG_SIZE)):
     ImageDraw.Draw(mask).rectangle(_pixel_box(parsed, width, height),
                                    fill=(255, 255, 255))
     return mask
+
+
+def decode_painted_mask(data, size=(IMG_SIZE, IMG_SIZE)):
+    """Decode a browser PNG data URL to a binary ``L`` mask, or return ``None``.
+
+    The hidden canvas posts ``data:image/png;base64,...``. Anything that is not
+    a small, decodable PNG with at least one bright pixel is rejected so the
+    caller can fall back to a normal preset instead of crashing or editing
+    nothing. Accepted images are resized to ``size`` and thresholded to exact
+    black/white values.
+    """
+    if not data or not isinstance(data, str):
+        return None
+    text = data.strip()
+    if not text:
+        return None
+
+    if text.lower().startswith('data:'):
+        header, separator, encoded = text.partition(',')
+        if not separator or ';base64' not in header.lower():
+            return None
+        if not header.lower().startswith('data:image/png'):
+            return None
+        text = encoded.strip()
+    text = ''.join(text.split())
+    if not text or len(text) > MAX_PAINT_DATA:
+        return None
+
+    try:
+        raw = base64.b64decode(text, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    if not raw or len(raw) > MAX_PAINT_DATA:
+        return None
+
+    try:
+        with Image.open(io.BytesIO(raw)) as image:
+            if image.format != 'PNG':
+                return None
+            image.load()
+            if max(image.size) > MAX_PAINT_DIMENSION:
+                return None
+            gray = image.convert('L')
+    except (OSError, ValueError):
+        return None
+
+    if gray.getextrema()[1] < 128:      # blank mask: nothing was painted
+        return None
+
+    width, height = _dimensions(size)
+    if gray.size != (width, height):
+        resample = getattr(getattr(Image, 'Resampling', Image), 'NEAREST')
+        gray = gray.resize((width, height), resample)
+    return gray.point(lambda value: 255 if value >= 128 else 0)
+
+
+def build_painted_mask(data, size=(IMG_SIZE, IMG_SIZE)):
+    """Return an RGB black/white PNG mask for painted data, or ``None``."""
+    mask = decode_painted_mask(data, size)
+    return mask.convert('RGB') if mask is not None else None
 
 
 def build_full_mask(size=(IMG_SIZE, IMG_SIZE)):

@@ -5,6 +5,7 @@ keys are needed. Run from the project folder while the Flask server may or may
 not be running:  python tests/backend_check.py
 """
 import atexit
+import base64
 import io
 import json
 import os
@@ -12,7 +13,7 @@ import sys
 import uuid
 from types import SimpleNamespace
 
-from PIL import Image
+from PIL import Image, ImageDraw
 from sqlalchemy import inspect
 
 try:
@@ -65,7 +66,19 @@ def room_bytes():
     return buf.getvalue()
 
 
+def painted_png_data(box=(100, 100, 379, 379), blank=False, jpeg=False):
+    """Build the PNG data URL a browser paint canvas would post."""
+    image = Image.new('L', (512, 512), 0)
+    if not blank:
+        ImageDraw.Draw(image).rectangle(box, fill=255)
+    buf = io.BytesIO()
+    image.convert('RGB').save(buf, 'JPEG' if jpeg else 'PNG')
+    prefix = 'image/jpeg' if jpeg else 'image/png'
+    return ('data:%s;base64,' % prefix) + base64.b64encode(buf.getvalue()).decode('ascii')
+
+
 IMAGE = room_bytes()
+PAINTED_PNG = painted_png_data()
 OVERLAYS, DESIGN_IDS, DESIGN_FILES = [], [], []
 suffix = uuid.uuid4().hex[:8]
 created_usernames = []
@@ -190,6 +203,25 @@ fallback = build_custom_mask('10,10,15,15', (512, 512))
 check('invalid custom mask falls back to centre',
       fallback.tobytes() == build_mask('middle_center', (512, 512)).tobytes())
 
+# --- freehand PNG mask helpers --------------------------------------------
+check('painted position is registered',
+      web.masking.PAINTED_POSITION == 'painted' and
+      web.masking.normalize_position(' PAINTED ') == 'painted' and
+      web.masking.LABELS['painted'] == 'Paint area')
+painted_mask = web.masking.build_painted_mask(PAINTED_PNG, (512, 512))
+check('painted PNG decodes to a binary mask', bool(painted_mask) and
+      painted_mask.mode == 'RGB' and
+      painted_mask.convert('L').getbbox() == (100, 100, 380, 380),
+      painted_mask.convert('L').getbbox() if painted_mask else None)
+if painted_mask:
+    extrema = painted_mask.convert('L').getextrema()
+    check('painted PNG is thresholded black/white', extrema == (0, 255), extrema)
+for label, data in [('empty', ''), ('corrupt', 'not-a-png'),
+                    ('blank PNG', painted_png_data(blank=True)),
+                    ('JPEG data URL', painted_png_data(jpeg=True))]:
+    check('painted PNG rejected: ' + label,
+          web.masking.build_painted_mask(data, (512, 512)) is None, repr(data)[:60])
+
 # --- /api/analyze-room ----------------------------------------------------
 anon = web.app.test_client()
 check('analyze-room requires login',
@@ -231,10 +263,14 @@ check('design form exposes new fields', res.status_code == 200 and all(
     text in html for text in ('name="room_type"', 'name="style"', 'name="budget"',
                               'name="preferences"', 'name="width_m"', 'name="length_m"',
                               'name="height_m"', 'name="detection_notes"',
-                              'value="whole"', 'value="custom"', 'Custom area',
-                               'type="hidden" id="mask_coords"', 'id="regionCanvas"',
-                               'id="clearRegion"', 'JS/region_mask.js',
-                               'api/analyze-room')))
+                              'value="whole"', 'value="custom"', 'value="painted"',
+                              'Custom area', 'Paint area',
+                              'type="hidden" id="mask_coords"', 'id="regionCanvas"',
+                              'id="clearRegion"', 'id="paintCanvas"',
+                              'name="painted_mask"', 'id="brushSize"',
+                              'id="eraserMode"', 'id="clearPaint"',
+                              'JS/region_mask.js', 'JS/freehand_mask.js',
+                              'api/analyze-room')))
 
 res = client.post('/design', data={
     'image': (io.BytesIO(IMAGE), 'room.jpg'),
@@ -439,6 +475,99 @@ if zone_design:
     mask = Image.open(os.path.join(ROOT, 'static', 'uploads', 'mask',
                                    zone_design.mask_image))
     check('zone mask PNG matches original top-left box',
+          mask_is_exact(mask, web.masking.mask_box('top_left', 512)))
+
+# --- freehand painted area design -----------------------------------------
+res = client.post('/design', data={
+    'image': (io.BytesIO(IMAGE), 'freehand.jpg'),
+    'prompt': 'paint red inside the freehand area', 'position': 'painted',
+    'painted_mask': PAINTED_PNG, 'mode': 'zone',
+}, content_type='multipart/form-data')
+with web.app.app_context():
+    freehand = Design.query.filter_by(prompt='paint red inside the freehand area').order_by(
+        Design.id.desc()).first()
+    DESIGN_IDS.append(freehand.id if freehand else None)
+    if freehand:
+        DESIGN_FILES.append((freehand.input_image, freehand.mask_image,
+                             freehand.output_image))
+check('painted design saved', res.status_code == 302 and bool(freehand)
+      and freehand.position == 'painted' and not freehand.mask_coords,
+      (res.status_code, freehand.position if freehand else None,
+       freehand.mask_coords if freehand else None))
+if freehand:
+    uploads = os.path.join(ROOT, 'static', 'uploads')
+    mask = Image.open(os.path.join(uploads, 'mask', freehand.mask_image))
+    gray = mask.convert('L')
+    check('painted mask PNG has white only in the painted rectangle',
+          mask.format == 'PNG' and gray.getbbox() == (100, 100, 380, 380)
+          and gray.getextrema() == (0, 255), gray.getbbox())
+    src = Image.open(os.path.join(uploads, 'input', freehand.input_image)).convert('RGB')
+    out = Image.open(os.path.join(uploads, 'output', freehand.output_image)).convert('RGB')
+    sp, op, mp = src.load(), out.load(), gray.load()
+    inside_bad, outside_bad = [], []
+    for y in range(src.height):
+        for x in range(src.width):
+            if (abs(x - 100) <= 8 or abs(x - 379) <= 8
+                    or abs(y - 100) <= 8 or abs(y - 379) <= 8):
+                continue
+            if mp[x, y] > 127:
+                red, green, blue = op[x, y]
+                if not (red > 200 and green < 60 and blue < 60):
+                    inside_bad.append((x, y, op[x, y]))
+            elif op[x, y] != sp[x, y]:
+                outside_bad.append((x, y, sp[x, y], op[x, y]))
+    check('painted area changes and the rest stays unchanged',
+          not inside_bad and not outside_bad,
+          {'inside_bad': len(inside_bad), 'outside_bad': len(outside_bad),
+           'center': op[240, 240], 'corner': op[5, 5]})
+    html = client.get('/design/%d' % freehand.id).get_data(as_text=True)
+    check('result page labels painted area and previews mask',
+          'Custom painted area edited' in html and 'mask-overlay' in html
+          and freehand.mask_image in html and 'id="toggleMask"' in html
+          and 'class="mask-preview"' in html)
+
+res = client.post('/design', data={
+    'image': (io.BytesIO(IMAGE), 'paint-fallback.jpg'),
+    'prompt': 'a painted fallback shelf', 'position': 'painted',
+    'painted_mask': 'not-a-png', 'mode': 'zone',
+}, content_type='multipart/form-data')
+with web.app.app_context():
+    paint_fallback = Design.query.filter_by(prompt='a painted fallback shelf').order_by(
+        Design.id.desc()).first()
+    DESIGN_IDS.append(paint_fallback.id if paint_fallback else None)
+    if paint_fallback:
+        DESIGN_FILES.append((paint_fallback.input_image, paint_fallback.mask_image,
+                             paint_fallback.output_image))
+check('invalid painted PNG falls back to centre',
+      res.status_code == 302 and bool(paint_fallback)
+      and paint_fallback.position == 'middle_center' and not paint_fallback.mask_coords,
+      (res.status_code, paint_fallback.position if paint_fallback else None))
+if paint_fallback:
+    mask = Image.open(os.path.join(ROOT, 'static', 'uploads', 'mask',
+                                   paint_fallback.mask_image))
+    check('painted fallback mask is centre zone only',
+          mask_is_exact(mask, web.masking.mask_box('middle_center', 512)))
+
+res = client.post('/design', data={
+    'image': (io.BytesIO(IMAGE), 'zone-paint.jpg'),
+    'prompt': 'a zone that ignores paint', 'position': 'top_left',
+    'painted_mask': PAINTED_PNG, 'mode': 'zone',
+}, content_type='multipart/form-data')
+with web.app.app_context():
+    zone_paint = Design.query.filter_by(prompt='a zone that ignores paint').order_by(
+        Design.id.desc()).first()
+    DESIGN_IDS.append(zone_paint.id if zone_paint else None)
+    if zone_paint:
+        DESIGN_FILES.append((zone_paint.input_image, zone_paint.mask_image,
+                             zone_paint.output_image))
+check('preset ignores stray painted PNG',
+      res.status_code == 302 and bool(zone_paint)
+      and zone_paint.position == 'top_left' and not zone_paint.mask_coords,
+      (res.status_code, zone_paint.position if zone_paint else None))
+if zone_paint:
+    mask = Image.open(os.path.join(ROOT, 'static', 'uploads', 'mask',
+                                   zone_paint.mask_image))
+    check('preset mask with stray PNG stays top-left',
           mask_is_exact(mask, web.masking.mask_box('top_left', 512)))
 
 # --- /design/<id>/placement ----------------------------------------------

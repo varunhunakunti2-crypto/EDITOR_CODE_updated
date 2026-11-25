@@ -20,7 +20,7 @@ steps, all implemented here:
 | 1 | **User Login** — Customer / Interior Designer / Shop Owner / Admin | Sign up with one of the three selectable roles; the first account becomes Admin. Each role lands on its own dashboard. |
 | 2 | **Upload Room Image** — bedroom, kitchen, living room or another space | `/design` accepts a PNG/JPG/JPEG room photo plus a typed (or spoken) prompt. |
 | 3 | **AI Room Detection and Measurement** — CV identifies walls, corners and boundaries and estimates dimensions using a reference | **Analyze room** calls `/api/analyze-room`; OpenCV returns width/length/height, confidence and an annotated overlay; the inputs stay editable. |
-| 4 | **AI Interior Design Generation** — use preferences, room dimensions, budget and selected style | The form records room type, style, budget, preferences, dimensions and mode (one zone, a custom rectangle or whole room); `prompt_builder.py` builds the generation prompt and local Stable Diffusion inpainting produces the preview. |
+| 4 | **AI Interior Design Generation** — use preferences, room dimensions, budget and selected style | The form records room type, style, budget, preferences, dimensions and mode (one zone, a custom rectangle, a freehand painted area or whole room); `prompt_builder.py` builds the generation prompt and local Stable Diffusion inpainting produces the preview. |
 | 5 | **Interactive Drag-and-Drop Furniture** — move, rotate, resize and rearrange products from registered shops | The result page palette shows verified products; items can be dragged, moved, resized and rotated, then saved to the design and exported as a PNG. |
 | 6 | **Product Details and Shop Connection** — prices, dimensions, descriptions, shop details and contact/enquire | `/products` and `/products/<id>` show verified shop identity and contact details; the **Ask shop owner** form creates an in-app enquiry; `/my/enquiries` tracks its status. |
 
@@ -115,13 +115,19 @@ and optional `reference_pixels`; it returns the same dimensions as JSON plus an
 The design form now records room type, style, budget, preferences and measured
 dimensions. `prompt_builder.py` combines them with the user's prompt before
 inpainting; the original prompt stays in the database row and the result page
-shows the room summary. Three edit modes are supported:
+shows the room summary. Four edit modes are supported:
 
-- **Add one item in a zone** — the existing nine-zone mask.
+- **Add one item in a zone** — the existing nine-zone mask (default: **Centre**).
 - **Custom area** — choose `Custom area` and drag a rectangle directly on the
   photo preview. `static/JS/region_mask.js` draws a live box, writes normalized
   `x1,y1,x2,y2` values into the hidden `mask_coords` field, and offers a
   **Clear selection** button.
+- **Paint area** — choose `Paint area` and draw freehand strokes with a mouse,
+  touch or pen. `static/JS/freehand_mask.js` shows translucent white strokes on
+  the preview, supports an adjustable brush, an eraser that subtracts strokes,
+  multiple strokes and **Clear painting**. The hidden 512×512 canvas exports a
+  black/white PNG data URL on submit, stored in the existing `mask_image`
+  column; the result is labelled **Custom painted area edited**.
 - **Redesign the whole room** — a fully white mask (`whole_room` position).
 
 ### Custom-area limits
@@ -136,15 +142,29 @@ shows the room summary. Three edit modes are supported:
 | Storage | valid values are normalized to percentages such as `25,25,75,75` in `Design.mask_coords`; older rows stay empty |
 | Presets | switching to any preset clears the custom coordinates and uses its original nine-zone mask |
 
+### Paint-area rules
+
+| Rule | Behaviour |
+| --- | --- |
+| Brush | 8–96 px on the hidden 512×512 mask; the slider updates the preview immediately |
+| Strokes | Mouse, touch and pen pointer events; each completed stroke is kept and can overlap |
+| Eraser | Removes painted white along its path, including earlier strokes |
+| Export | Hidden canvas posts a PNG data URL in `painted_mask`; the form also exports on submit |
+| Validation | Non-PNG, corrupt, oversized or blank images are rejected by `masking.decode_painted_mask()` |
+| Threshold | Accepted PNGs are resized to the working image and converted to exact black/white pixels |
+| Fallback | Invalid or empty paint data uses the normal centre zone with a friendly flash message |
+| Presets | Switching to any preset (or `Custom area`) clears painted data and ignores stray PNG posts |
+| Storage | `position='painted'`; `mask_coords` stays empty and the PNG reuses `Design.mask_image` |
+
 Masks are saved as lossless PNGs: the selected area is exactly white and every
 pixel outside it is black. Generated pixels are pasted back through that mask, so
-everything beyond the white box keeps the original photo's pixels; only JPEG
+everything beyond the white area keeps the original photo's pixels; only JPEG
 edge bleed can affect a few pixels right at the boundary. A custom-area result
-is labelled **Custom area edited**
-and the Before/After comparison shows the mask over the original photo, with a
-button to hide or show it. Older designs keep their original result layout with
-no custom label or mask overlay. The legacy `static/JS/mask.js` is unused and
-unchanged.
+is labelled **Custom area edited** and a painted result is labelled **Custom
+painted area edited**. The Before/After comparison shows the mask over the
+original photo, includes a small mask preview, and has a button to hide or show
+it. Older designs keep their original result layout with no custom label or
+mask overlay. The legacy `static/JS/mask.js` is unused and unchanged.
 
 Furniture arrangements are saved with `POST /design/<id>/placement` (JSON with
 an `items` list; design owner or admin only) and restored when the result page
@@ -251,10 +271,10 @@ gitignored.
 
 Start the app first (`python app.py`), then run the suites from the project folder:
 
-    python tests/smoke_test.py       # 170 HTTP/DB checks, standard library only
-    python tests/browser_check.py    # 64 real-browser checks + 27 screenshots
+    python tests/smoke_test.py       # 174 HTTP/DB checks, standard library only
+    python tests/browser_check.py    # 77 real-browser checks + 28 screenshots
     python tests/room_analysis_check.py  # OpenCV measurement checks, no server needed
-    python tests/backend_check.py    # 54 in-process API/DB checks, stubbed AI, no server needed
+    python tests/backend_check.py    # 69 in-process API/DB checks, stubbed AI, no server needed
     python tests/flow_check.py       # full analyze -> design -> result flow in a browser
     python tests/shop_flow_check.py  # shop register -> verify -> catalogue/edit/enquiry flow
     python tests/admin_check.py      # verification, moderation and report counts, no server needed
@@ -265,7 +285,8 @@ new route for all four roles, the design schema fields (including `mask_coords`)
 that the eight oldest designs still open with blank coordinates after the
 migration and show no custom-area UI, the analysis API (including manual
 overrides and errors), four custom-mask HTTP cases (valid coordinates, missing
-coordinates, too-small box and preset with a stray coordinate), design
+coordinates, too-small box and preset with a stray coordinate), four painted-mask
+HTTP cases (valid PNG, corrupt PNG, empty data and preset with a stray PNG), design
 result fields, placement save/load with
 rotation, shop verification/revocation, product edit/availability, enquiry details
 and flagging, plus product upload/list/detail/delete, catalogue access, admin lists
@@ -276,9 +297,11 @@ steps of the project PDF (login, room upload, CV measurement, design generation,
 interactive furniture with rotation, and product/shop connection) as each of the
 four roles, checks the custom-area control, drag-select overlay, live box,
 normalized hidden field, tiny-drag rejection, clear button and preset switching,
-checks the custom-area result label and mask overlay toggle, and writes
-`docs/screenshots/14-custom-area.png` plus a screenshot for every customer step
-and one per other role.
+then paints mouse strokes, checks PNG export, eraser subtraction, multiple
+strokes, synthetic touch/pen strokes, clear and preset fallback. It checks both
+result labels and mask overlay toggles, and writes
+`docs/screenshots/14-custom-area.png`, `docs/screenshots/14-painted-area.png`
+plus a screenshot for every customer step and one per other role.
 `room_analysis_check.py` generates three
 synthetic rooms with known dimensions, checks the measured size, overlays and
 manual overrides, and also analyses any uploaded room photos.
@@ -288,9 +311,13 @@ too small, out of bounds and reversed), confirms the custom mask and its
 fallback (including normalized 0–1 browser values), stores normalised
 coordinates in `mask_coords`, inspects the saved PNG
 pixel by pixel to confirm white only in the chosen box (and black everywhere
-else), verifies that stray coords never replace an ordinary nine-zone mask,
-checks that `upgrade_schema()` is idempotent, and exercises placement guards
-with a stubbed pipeline (no diffusion or API keys needed). `flow_check.py` drives the
+else), verifies that stray coords never replace an ordinary nine-zone mask, then
+decodes/thresholds painted PNGs, rejects empty, corrupt, blank and JPEG data,
+saves a painted design, proves the painted pixels change while the rest of the
+photo stays identical, checks its result label/preview, and confirms invalid
+paint falls back and presets ignore stray PNGs. It checks that
+`upgrade_schema()` is idempotent and exercises placement guards with a stubbed
+pipeline (no diffusion or API keys needed). `flow_check.py` drives the
 whole room-analysis → design → result journey in Chromium with real inpainting
 (slower, ~1 minute), then removes its demo account and design. `shop_flow_check.py`
 covers the full shop journey in Chromium without diffusion (fast): shop registration,
@@ -314,18 +341,24 @@ filter and backfilled by `upgrade_schema()` on startup.
 Verified with the app running at `http://localhost:5000` and the local inpainting
 model loaded (`/model-status` reports `runwayml/stable-diffusion-inpainting`):
 
-- `python tests/smoke_test.py` — **170 passed, 0 failed**, including all original
-  assertions plus the four custom-mask cases.
-- `python tests/browser_check.py` — **64 passed, 0 failed**, with zero browser
-  console errors and zero failed requests, including the drag-select interaction
-  and `14-custom-area.png`.
-- `python tests/backend_check.py` — **54 passed, 0 failed**, including custom
+- `python tests/smoke_test.py` — **174 passed, 0 failed**, including all original
+  assertions, the four custom-mask cases and the four painted-mask cases.
+- `python tests/browser_check.py` — **77 passed, 0 failed**, with zero browser
+  console errors and zero failed requests, including the drag-select interaction,
+  painted strokes/eraser/clear/touch/pen checks, and both
+  `14-custom-area.png` and `14-painted-area.png`.
+- `python tests/backend_check.py` — **69 passed, 0 failed**, including custom
   coordinate validation, normalized browser values, storage, pixel-exact PNG
-  masks, proof that generated pixels stay inside the white box, the custom
-  result label/overlay, preserved nine-zone masks and idempotent schema upgrade.
+  masks, painted PNG validation/thresholding, proof that generated pixels stay
+  inside the white area while the rest of the photo is unchanged, both result
+  labels/overlays, preserved nine-zone masks and idempotent schema upgrade.
+- `room_analysis_check.py` **21/21**, `flow_check.py` **12/12**,
+  `shop_flow_check.py` **20/20**, `admin_check.py` **28/28** and
+  `placement_check.py` **14/14** also pass.
 - Final browser acceptance: drag a small box → **a red sofa** → only that box
-  changes; the **Centre** preset reproduces the original fixed zone; the eight
-  oldest designs still open with no custom-area UI.
+  changes; paint a freehand stroke → only the white area changes; the **Centre**
+  preset reproduces the original fixed zone; the eight oldest designs still open
+  with no custom-area UI.
 - Manual six-step click-through in a real browser as a customer: register/login →
   upload a room photo → **Analyze room** (overlay plus editable 6.16 × 8.01 × 2.8 m
   estimate) → generate a design → add, rotate, save and reload furniture → open
@@ -356,6 +389,7 @@ rotated item) into `docs/screenshots/`:
 | Admin shop catalogue | ![Admin shop](docs/screenshots/13-admin-shop.png) |
 | Admin reports | ![Admin reports](docs/screenshots/14-admin-reports.png) |
 | Custom area drag-select | ![Custom area](docs/screenshots/14-custom-area.png) |
+| Paint area freehand strokes | ![Paint area](docs/screenshots/14-painted-area.png) |
 | Product moderation | ![Moderation](docs/screenshots/15-product-moderation.png) |
 | My enquiries | ![My enquiries](docs/screenshots/16-my-enquiries.png) |
 | Rotated placement | ![Rotated placement](docs/screenshots/17-result-rotated.png) |

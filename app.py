@@ -859,8 +859,19 @@ def design():
         file = request.files['image']
         prompt = request.form.get('prompt', '').strip()
         whole_room = request.form.get('mode') == 'whole'
+        raw_position = (request.form.get('position') or '').strip().lower()
+        painted = not whole_room and raw_position == masking.PAINTED_POSITION
         position = ('whole_room' if whole_room else
-                    masking.normalize_position(request.form.get('position')))
+                    masking.normalize_position(raw_position))
+        painted_mask = None
+        if painted:
+            painted_mask = masking.build_painted_mask(
+                request.form.get('painted_mask', ''), (512, 512))
+            if painted_mask is None:
+                flash('Painted area was empty or invalid; using the centre zone '
+                      'instead.', 'info')
+                painted = False
+                position = masking.DEFAULT_POSITION
         # ``coords`` is kept as a fallback for older form posts.
         custom_coords = masking.parse_coords(
             request.form.get('mask_coords') or request.form.get('coords'))
@@ -905,9 +916,11 @@ def design():
                 # Load input image
                 init_image = Image.open(input_path).convert("RGB").resize((512, 512))
                 
-                # One zone, a validated custom box, or a fully white mask.
+                # One zone, a custom box, freehand paint, or a fully white mask.
                 if whole_room:
                     mask_image = masking.build_full_mask(init_image.size)
+                elif painted:
+                    mask_image = painted_mask
                 elif position == 'custom':
                     mask_image = masking.build_custom_mask(custom_coords, init_image.size)
                 else:

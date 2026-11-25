@@ -7,15 +7,18 @@ It registers temporary accounts, exercises every role-gated feature and
 removes all of its own data afterwards. Only Python's standard library is
 required.
 """
+import base64
 import http.cookiejar
 import json
 import os
+import struct
 import sqlite3
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+import zlib
 
 BASE = os.environ.get("APP_BASE_URL", "http://127.0.0.1:5000")
 DB = os.path.join("instance", "interior_design.db")
@@ -42,7 +45,7 @@ def request(op, path, data=None, ctype=None):
     headers = {"Content-Type": ctype} if ctype else {}
     req = urllib.request.Request(BASE + path, data=data, headers=headers)
     try:
-        with op.open(req, timeout=90) as r:
+        with op.open(req, timeout=300) as r:
             return r.status, r.headers.get("Location"), r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         return e.code, e.headers.get("Location"), e.read().decode("utf-8", "replace")
@@ -63,6 +66,25 @@ def multipart(fields, filename, image):
                  f"{value}\r\n").encode()
     body += (f"--{boundary}--\r\n").encode()
     return body, "multipart/form-data; boundary=" + boundary
+
+
+def painted_png_data(size=64, box=(16, 16, 48, 48), blank=False):
+    """Build a small grayscale PNG data URL without needing Pillow."""
+    def chunk(kind, payload):
+        return (struct.pack(">I", len(payload)) + kind + payload +
+                struct.pack(">I", zlib.crc32(kind + payload) & 0xffffffff))
+
+    rows = []
+    for y in range(size):
+        row = bytearray([0])
+        for x in range(size):
+            white = (not blank and box[0] <= x < box[2] and box[1] <= y < box[3])
+            row.append(255 if white else 0)
+        rows.append(bytes(row))
+    header = struct.pack(">IIBBBBB", size, size, 8, 0, 0, 0, 0)
+    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) +
+           chunk(b"IDAT", zlib.compress(b"".join(rows))) + chunk(b"IEND", b""))
+    return "data:image/png;base64," + base64.b64encode(png).decode("ascii")
 
 
 def make_user(prefix, role):
@@ -258,6 +280,42 @@ def main():
           st == 302 and bool(row) and row[0] == "top_left" and row[1] == ""
           and "placed at <strong>top left</strong>" in html
           and "Custom area edited" not in html and "mask-overlay" not in html,
+          (st, loc, row[:2] if row else None))
+
+    painted_png = painted_png_data()
+    st, loc, row, html = post_custom_design(
+        {"position": "painted", "painted_mask": painted_png, "mode": "zone"},
+        "smoke-painted.jpg", "smoke valid painted mask")
+    check("smoke valid painted mask",
+          st == 302 and bool(row) and row[0] == "painted" and row[1] == ""
+          and os.path.isfile(os.path.join("static", "uploads", "mask", row[3]))
+          and "Custom painted area edited" in html and "mask-overlay" in html,
+          (st, loc, row[:2] if row else None))
+
+    st, loc, row, html = post_custom_design(
+        {"position": "painted", "painted_mask": "not-a-png", "mode": "zone"},
+        "smoke-bad-paint.jpg", "smoke corrupt painted mask fallback")
+    check("smoke corrupt painted mask fallback",
+          st == 302 and bool(row) and row[0] == "middle_center" and row[1] == ""
+          and "Painted area was empty or invalid" in html
+          and "Custom painted area edited" not in html and "mask-overlay" not in html,
+          (st, loc, row[:2] if row else None))
+
+    st, loc, row, html = post_custom_design(
+        {"position": "painted", "painted_mask": "", "mode": "zone"},
+        "smoke-empty-paint.jpg", "smoke empty painted mask fallback")
+    check("smoke empty painted mask fallback",
+          st == 302 and bool(row) and row[0] == "middle_center" and row[1] == ""
+          and "Painted area was empty or invalid" in html
+          and "mask-overlay" not in html,
+          (st, loc, row[:2] if row else None))
+
+    st, loc, row, html = post_custom_design(
+        {"position": "top_left", "painted_mask": painted_png, "mode": "zone"},
+        "smoke-preset-paint.jpg", "smoke preset ignores painted data")
+    check("smoke preset ignores painted data",
+          st == 302 and bool(row) and row[0] == "top_left" and row[1] == ""
+          and "Custom painted area edited" not in html and "mask-overlay" not in html,
           (st, loc, row[:2] if row else None))
 
     # A design row with all new fields: result page + placement persistence.
