@@ -35,3 +35,12 @@ SD_MODEL_ID = os.environ.get("SD_MODEL_ID", "runwayml/stable-diffusion-inpaintin
 SD_DEVICE = os.environ.get("SD_DEVICE", "auto")
 SD_STEPS = int(os.environ.get("SD_STEPS", "12"))
 
+# --- Optional lightweight depth assistant -----------------------------------
+# Depth Anything V2 Small is Apache 2.0 and ~99 MB, so it also fits a 4 GB GPU.
+DEPTH_ENABLED = os.environ.get("DEPTH_ENABLED", "1").strip().lower() not in (
+    "0", "false", "no", "off")
+DEPTH_MODEL_ID = os.environ.get(
+    "DEPTH_MODEL_ID", "depth-anything/Depth-Anything-V2-Small-hf")
+DEPTH_DEVICE = os.environ.get("DEPTH_DEVICE", "auto")
+DEPTH_MAX_SIZE = int(os.environ.get("DEPTH_MAX_SIZE", "512"))
+

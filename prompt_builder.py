@@ -47,11 +47,13 @@ def _dimension(value, label):
 
 def build_prompt(user_prompt, room_type='', style='', budget='', preferences='',
                  width_m=None, length_m=None, height_m=None, whole_room=False,
-                 detection_notes=''):
+                 detection_notes='', depth_hint=''):
     """Return the final generation prompt.
 
     ``detection_notes`` is accepted for callers that already have an analysis
     result; it is only used to recover dimensions when none were supplied.
+    ``depth_hint`` adds a short relative-depth cue when the optional depth
+    assistant is enabled; the raw user prompt is never modified.
     """
     request = _clean(user_prompt)
     if not request:
@@ -82,6 +84,9 @@ def build_prompt(user_prompt, room_type='', style='', budget='', preferences='',
     preferences = _clean(preferences)
     if preferences:
         parts.append('preferences: ' + preferences)
+    depth_hint = _clean(depth_hint).rstrip('.')
+    if depth_hint:
+        parts.append('depth cues: ' + depth_hint)
 
     if len(parts) == 1 and _clean(detection_notes):
         # Keep the prompt readable if all we know is a measurement note.

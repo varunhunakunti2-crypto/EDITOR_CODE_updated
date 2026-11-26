@@ -15,6 +15,7 @@ SCRIPTS = [
     "tests/shop_flow_check.py",
     "tests/placement_check.py",
     "tests/backend_check.py",
+    "tests/depth_check.py",
     "tests/browser_check.py",
 ]
 

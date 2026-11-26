@@ -24,6 +24,12 @@ steps, all implemented here:
 | 5 | **Interactive Drag-and-Drop Furniture** — move, rotate, resize and rearrange products from registered shops | The result page palette shows verified products; items can be dragged, moved, resized and rotated, then saved to the design and exported as a PNG. |
 | 6 | **Product Details and Shop Connection** — prices, dimensions, descriptions, shop details and contact/enquire | `/products` and `/products/<id>` show verified shop identity and contact details; the **Ask shop owner** form creates an in-app enquiry; `/my/enquiries` tracks its status. |
 
+An optional **Depth Anything V2 Small** layer can preview relative near/far depth
+and add a short geometry cue to the generation prompt. It is an assistant only:
+the editable PNG mask, custom areas, freehand paint and SD 1.5 inpainting remain
+unchanged. The model is available by default, but its cue is only applied to
+generation when **Use depth cues** is ticked.
+
 Screenshots of every step are linked in [Screenshots](#screenshots); `tests/browser_check.py`
 clicks through all six steps as all four roles.
 
@@ -57,9 +63,19 @@ the placeholder template is committed.
 - `SECRET_KEY` — Flask session secret; use a long random string.
 - `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_TIMEOUT` — nearby-shop suggestions. The default model is `gemini-3.5-flash-lite` (fast, ~2s); if it fails the app tries `gemini-3.5-flash` then `gemini-flash-latest`.
 - `SD_MODEL_ID`, `SD_DEVICE` — local inpainting, described below.
+- `DEPTH_ENABLED`, `DEPTH_MODEL_ID`, `DEPTH_DEVICE`, `DEPTH_MAX_SIZE` — optional relative-depth assistant. Defaults: enabled, `depth-anything/Depth-Anything-V2-Small-hf`, `auto`, `512`. Set `DEPTH_ENABLED=0` to hide it entirely. `/depth-status` reports its load state.
 - `REPLICATE_API_TOKEN` — optional, only used by the standalone `code1_api.py` example; the Flask app does not call Replicate.
 
 The local inpainting model is configured with SD_MODEL_ID (default `runwayml/stable-diffusion-inpainting`, a public repo — the old `stabilityai/stable-diffusion-2-inpainting` now returns 401) and SD_DEVICE (`auto`, `cuda` or `cpu`). It is downloaded on first use; startup does not block. Check `/model-status` to see whether it is loading, ready, or what error occurred. A failed load is retried on the next design request.
+
+The optional depth assistant uses `depth-anything/Depth-Anything-V2-Small-hf`
+(Apache 2.0, ~99 MB). With CPU-only PyTorch, install its image-processor dependency
+before first use:
+
+    pip install "torchvision==0.27.1+cpu" --index-url https://download.pytorch.org/whl/cpu
+
+Adjust the version to match your installed `torch` if needed. The model loads lazily
+on the first **Depth preview** or when a design opts into depth cues.
 
 ## Roles and dashboards
 Sign-up lets a user choose Customer, Interior designer or Shop owner. The first account created automatically becomes Admin (admin cannot be self-selected). Each role has its own landing page:

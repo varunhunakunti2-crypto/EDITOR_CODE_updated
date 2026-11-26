@@ -63,7 +63,7 @@
     </section>
   </div>
 
-  {% if d.room_type or d.style or d.budget or d.preferences or d.width_m or d.length_m or d.height_m or d.detection_notes %}
+  {% if d.room_type or d.style or d.budget or d.preferences or d.width_m or d.length_m or d.height_m or d.detection_notes or depth_url %}
   <section class="panel room-details">
     <h2>Room details</h2>
     <ul class="room-summary">
@@ -80,6 +80,12 @@
       {% if d.preferences %}<li>Preferences: {{ d.preferences }}</li>{% endif %}
       {% if d.detection_notes %}<li>{{ d.detection_notes }}</li>{% endif %}
     </ul>
+    {% if depth_url %}
+    <div class="depth-result">
+      <p><strong>Relative depth preview</strong> — lighter areas are nearer in this estimate; it is a scale cue, not a measurement.</p>
+      <img class="depth-preview" src="{{ depth_url }}" alt="Relative room depth preview">
+    </div>
+    {% endif %}
     <p class="notice">Dimensions are estimated from a single photo using a reference
       object, so treat them as approximate. Verify important measurements manually
       before ordering furniture.</p>

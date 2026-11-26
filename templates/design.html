@@ -57,6 +57,12 @@
           <button type="button" class="btn btn-ghost" id="measureBtn">{{ icon('target') }} Analyze room</button>
           <span class="hint" id="measureStatus" role="status" aria-live="polite">Upload a photo, then measure it.</span>
         </div>
+        <div class="field-row depth-row">
+          <label class="check-label"><input type="checkbox" name="use_depth" id="useDepth" value="1"> Use depth cues</label>
+          <button type="button" class="btn btn-ghost" id="depthBtn">{{ icon('target') }} Depth preview</button>
+          <span class="hint" id="depthStatus" role="status" aria-live="polite">Optional: lightweight relative depth keeps scale and perspective consistent.</span>
+        </div>
+        <img id="depthPreview" alt="Relative room depth preview" hidden>
         <div class="field-row dims-row">
           <label>Width (m)<input class="input" type="number" name="width_m" id="widthM" min="0.1" max="100" step="0.01" placeholder="auto"></label>
           <label>Length (m)<input class="input" type="number" name="length_m" id="lengthM" min="0.1" max="100" step="0.01" placeholder="auto"></label>
@@ -356,6 +362,33 @@
       measureStatus.textContent = err.message || 'Could not measure this photo.';
     } finally {
       measureBtn.disabled = false;
+    }
+  });
+
+  // ---- Optional depth preview: POST the photo to /api/estimate-depth ----
+  const depthBtn = document.getElementById('depthBtn');
+  const depthStatus = document.getElementById('depthStatus');
+  const depthPreview = document.getElementById('depthPreview');
+  depthBtn.addEventListener('click', async () => {
+    const file = input.files[0];
+    if (!file) { depthStatus.textContent = 'Choose a room photo first.'; return; }
+    const fd = new FormData();
+    fd.append('image', file);
+    depthBtn.disabled = true;
+    depthStatus.textContent = 'Estimating relative depth (first run may take a moment)...';
+    try {
+      const res = await fetch('{{ url_for("api_estimate_depth") }}',
+        { method:'POST', body:fd, credentials:'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || 'Could not estimate depth.');
+      depthPreview.src = data.preview_url + '?t=' + Date.now();
+      depthPreview.hidden = false;
+      depthStatus.textContent = data.hint || 'Relative depth preview ready.';
+    } catch (err) {
+      depthPreview.hidden = true;
+      depthStatus.textContent = err.message || 'Could not estimate depth.';
+    } finally {
+      depthBtn.disabled = false;
     }
   });
 

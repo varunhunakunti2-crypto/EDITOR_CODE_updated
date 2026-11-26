@@ -6,6 +6,8 @@ opencv-python-headless
 torch
 diffusers
 transformers
+# Depth Anything V2 image processor needs torchvision. For CPU-only builds use:
+# pip install "torchvision==0.27.1+cpu" --index-url https://download.pytorch.org/whl/cpu
 accelerate
 safetensors
 SpeechRecognition

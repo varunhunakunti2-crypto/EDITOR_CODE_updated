@@ -20,6 +20,7 @@ import config
 import masking
 import places
 import room_analysis
+import depth
 from prompt_builder import build_prompt, describe_room, ROOM_TYPES, STYLES
 
 app = Flask(__name__)
@@ -131,7 +132,7 @@ def format_date(value, fmt='%d %b %Y'):
 
 # Create upload directories
 STATIC_UPLOADS = os.path.join(config.BASE_DIR, 'static', 'uploads')
-for folder in ['input', 'mask', 'output', 'products', 'analysis']:
+for folder in ['input', 'mask', 'output', 'products', 'analysis', 'depth']:
     os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], folder), exist_ok=True)
     os.makedirs(os.path.join(STATIC_UPLOADS, folder), exist_ok=True)
 
@@ -239,6 +240,49 @@ def load_user(user_id):
 def model_status_route():
     """Small health check for the local inpainting model (no secrets exposed)."""
     return jsonify(model_status())
+
+
+@app.route('/depth-status')
+def depth_status_route():
+    """Health check for the optional lightweight depth assistant."""
+    return jsonify(depth.status())
+
+
+@app.route('/api/estimate-depth', methods=['POST'])
+@login_required
+def api_estimate_depth():
+    """Return a relative-depth preview for an uploaded room photo."""
+    if not config.DEPTH_ENABLED:
+        return jsonify(error='Depth assistant is disabled.'), 503
+    image = request.files.get('image')
+    if image is None or image.filename == '':
+        return jsonify(error='Please choose a room photo.'), 400
+    if not allowed_file(image.filename):
+        return jsonify(error='Please upload a PNG, JPG or JPEG image.'), 400
+
+    tmp_dir = tempfile.mkdtemp(prefix='depth-api-')
+    extension = os.path.splitext(image.filename)[1].lower()
+    tmp_path = os.path.join(tmp_dir, 'photo' + extension)
+    try:
+        image.save(tmp_path)
+        result = depth.estimate_depth(
+            tmp_path, output_dir=os.path.join(STATIC_UPLOADS, 'depth'),
+            max_size=config.DEPTH_MAX_SIZE)
+    except Exception as exc:
+        print('[ERROR] Depth estimation failed:', exc)
+        return jsonify(error='Could not estimate depth. Please try another photo.'), 500
+    finally:
+        try:
+            os.remove(tmp_path)
+            os.rmdir(tmp_dir)
+        except OSError:
+            pass
+
+    return jsonify(
+        preview_url=url_for('static', filename='uploads/depth/' +
+                            os.path.basename(result['preview_path'])),
+        hint=result['hint'], stats=result['stats'], model=config.DEPTH_MODEL_ID,
+    )
 
 
 @app.route('/')
@@ -893,6 +937,7 @@ def design():
         length_m = _form_float(request.form, 'length_m', 0.1, 100)
         height_m = _form_float(request.form, 'height_m', 0.1, 100)
         detection_notes = request.form.get('detection_notes', '').strip()[:1000]
+        use_depth = config.DEPTH_ENABLED and request.form.get('use_depth') == '1'
 
         if not prompt:
             flash('Please type or speak what you want to add.', 'error')
@@ -932,7 +977,25 @@ def design():
                 mask_image.save(mask_path)
                 
                 print("[OK] Mask created and saved")
-                
+
+                # Optional depth assistant: relative near/far cues are added to
+                # the generation prompt and a preview is kept for the result
+                # page. It never changes the mask or the raw user prompt.
+                depth_hint = ''
+                if use_depth:
+                    try:
+                        depth_result = depth.estimate_depth(
+                            init_image, mask=mask_image,
+                            output_dir=os.path.join(STATIC_UPLOADS, 'depth'),
+                            filename=depth.depth_filename(filename),
+                            max_size=config.DEPTH_MAX_SIZE)
+                        depth_hint = depth_result['hint']
+                        detection_notes = (detection_notes + ' ' + depth_hint).strip()[:1000]
+                    except Exception as exc:
+                        print('[WARN] Depth assistant unavailable:', exc)
+                        flash('Depth preview was unavailable; continuing without it.',
+                              'info')
+
                 # Load on demand (and retry automatically if an earlier attempt failed)
                 pipeline = get_pipe()
                 if pipeline is None:
@@ -945,6 +1008,7 @@ def design():
                     prompt, room_type=room_type, style=style, budget=budget,
                     preferences=preferences, width_m=width_m, length_m=length_m,
                     height_m=height_m, whole_room=whole_room,
+                    depth_hint=depth_hint,
                 )
                 safe_print(f"[AI] Generating image with prompt: {generation_prompt}")
 
@@ -1042,9 +1106,15 @@ def result(design_id):
             placement = {}
     except ValueError:
         placement = {}
+    # A depth preview is derived from the input name, so no DB column is needed.
+    depth_name = depth.depth_filename(d.input_image)
+    depth_url = (url_for('static', filename='uploads/depth/' + depth_name)
+                 if os.path.isfile(os.path.join(STATIC_UPLOADS, 'depth', depth_name))
+                 else None)
     # Furniture from the shop catalogue is available to drag onto the result.
     furniture = visible_products().order_by(Product.created_at.desc()).all()
     return render_template('result.html', d=d, nearby=nearby, placement=placement,
+                           depth_url=depth_url,
                            room_summary=describe_room(
                                d.room_type, d.style, d.budget,
                                d.width_m, d.length_m, d.height_m),
