@@ -131,7 +131,11 @@ and optional `reference_pixels`; it returns the same dimensions as JSON plus an
 The design form now records room type, style, budget, preferences and measured
 dimensions. `prompt_builder.py` combines them with the user's prompt before
 inpainting; the original prompt stays in the database row and the result page
-shows the room summary. Four edit modes are supported:
+shows the room summary. An optional **style reference image** can also be
+uploaded: `reference_style.py` reads its palette, brightness, saturation and
+edge density, and appends short aesthetic cues to the generation prompt only.
+The file is saved alongside the room photo and never changes the raw prompt or
+the mask. Four edit modes are supported:
 
 - **Add one item in a zone** — the existing nine-zone mask (default: **Centre**).
 - **Custom area** — choose `Custom area` and drag a rectangle directly on the
@@ -186,6 +190,13 @@ Furniture arrangements are saved with `POST /design/<id>/placement` (JSON with
 an `items` list; design owner or admin only) and restored when the result page
 is reopened. Each item stores `src`, `name`, `rx`, `ry`, `scale` and `rotation`
 (degrees, normalised to -180..180). The Save placement button calls this route.
+
+When the result contains a detectable coloured frame (or a saved custom/painted
+area), `detect_frame_box()` passes its centre and size to `static/JS/placement.js`.
+Newly dropped or clicked furniture is snapped into that frame and scaled with
+contain logic so its aspect ratio is kept. The **Fit to frame** button repeats the
+snap for the last placed item; it is hidden when no frame is available. Saved
+arrangements are restored exactly as stored and are never re-snapped.
 
 ## Shop verification, catalogue and enquiries
 - `/shop/profile` — shop name, city, address and phone. Submitting resets the
