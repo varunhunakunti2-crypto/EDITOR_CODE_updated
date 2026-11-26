@@ -21,7 +21,21 @@
           <small>PNG, JPG or JPEG, up to 16 MB</small>
           <input type="file" name="image" id="imageInput" accept="image/png,image/jpeg" required>
         </label>
+
+        <div style="margin-top:1.5rem;padding-top:1.2rem;border-top:1px dashed var(--mist)">
+          <h3 style="font-size:1.15rem;margin-bottom:.3rem">{{ icon('sparkles') }} Style reference image <span class="sub" style="font-size:.9rem">(optional)</span></h3>
+          <p class="sub" style="font-size:.9rem;margin-bottom:.8rem">Upload an inspiration or style photo. The AI will match its colors, texture, and aesthetic in your room design.</p>
+          <label class="dropzone" style="padding:1.4rem" id="refDropzone">
+            {{ icon('image') }}
+            <strong id="refTitle">Choose style reference or drop here</strong>
+            <small id="refSubtitle">Optional inspiration photo (PNG, JPG or JPEG)</small>
+            <img id="refPreview" style="max-height:120px;border-radius:8px;margin-top:.6rem;display:none;object-fit:cover;box-shadow:0 2px 8px rgba(0,0,0,.15)" alt="Reference preview">
+            <input type="file" name="reference_image" id="refImageInput" accept="image/png,image/jpeg">
+          </label>
+
+        </div>
       </section>
+
 
       <section class="panel" id="roomDetails">
         <h2>2. Room details <span class="sub">(optional)</span></h2>
@@ -228,6 +242,38 @@
   drop.addEventListener('drop', e => {
     if(e.dataTransfer.files.length){ input.files = e.dataTransfer.files; show(input.files[0]); }
   });
+
+  // Reference image preview
+  const refInput = document.getElementById('refImageInput');
+  const refDrop = document.getElementById('refDropzone');
+  const refTitle = document.getElementById('refTitle');
+  const refSub = document.getElementById('refSubtitle');
+  const refPreview = document.getElementById('refPreview');
+
+  function showRef(file){
+    if(!file) return;
+    if(!/^image\/(png|jpe?g)$/.test(file.type)){ alert('Please choose a PNG or JPG image for reference.'); refInput.value=''; return; }
+    if(file.size > MAX){ alert('File is larger than 16 MB.'); refInput.value=''; return; }
+    const r = new FileReader();
+    r.onload = e => {
+      refPreview.src = e.target.result;
+      refPreview.style.display = 'block';
+      refDrop.classList.add('has-image');
+    };
+    r.readAsDataURL(file);
+    refTitle.textContent = file.name;
+    refSub.textContent = 'Reference style loaded (click or drop another to change)';
+  }
+
+  if (refInput && refDrop) {
+    refInput.addEventListener('change', () => showRef(refInput.files[0]));
+    ['dragenter','dragover'].forEach(ev => refDrop.addEventListener(ev, e => { e.preventDefault(); refDrop.classList.add('drag'); }));
+    ['dragleave','drop'].forEach(ev => refDrop.addEventListener(ev, e => { e.preventDefault(); refDrop.classList.remove('drag'); }));
+    refDrop.addEventListener('drop', e => {
+      if(e.dataTransfer.files.length){ refInput.files = e.dataTransfer.files; showRef(refInput.files[0]); }
+    });
+  }
+
 
   document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
     const t = document.getElementById('prompt'); t.value = c.dataset.prompt; t.focus();

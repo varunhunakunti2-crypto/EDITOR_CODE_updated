@@ -21,7 +21,9 @@ import masking
 import places
 import room_analysis
 import depth
+import reference_style
 from prompt_builder import build_prompt, describe_room, ROOM_TYPES, STYLES
+
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = config.SECRET_KEY
@@ -956,8 +958,21 @@ def design():
                 
                 # Save input image
                 file.save(input_path)
+
+                # Optional reference image for visual style matching
+                ref_file = request.files.get('reference_image')
+                ref_style_cue = ''
+                if ref_file and ref_file.filename and allowed_file(ref_file.filename):
+                    ref_ext = os.path.splitext(ref_file.filename)[1].lower()
+                    ref_filename = 'ref_' + str(uuid.uuid4()) + ref_ext
+                    ref_path = os.path.join(app.config['UPLOAD_FOLDER'], 'input', ref_filename)
+                    ref_file.save(ref_path)
+                    ref_style_cue = reference_style.extract_reference_style(ref_path)
+                    if ref_style_cue:
+                        safe_print(f'[AI] Reference image style extracted: {ref_style_cue}')
                 
                 # [OK] EXACTLY LIKE YOUR WORKING CODE
+
                 # Load input image
                 init_image = Image.open(input_path).convert("RGB").resize((512, 512))
                 
@@ -1009,7 +1024,9 @@ def design():
                     preferences=preferences, width_m=width_m, length_m=length_m,
                     height_m=height_m, whole_room=whole_room,
                     depth_hint=depth_hint,
+                    reference_style=ref_style_cue,
                 )
+
                 safe_print(f"[AI] Generating image with prompt: {generation_prompt}")
 
                 with torch.inference_mode():
@@ -1087,7 +1104,47 @@ def design():
                            room_types=ROOM_TYPES, styles=STYLES)
 
 
+def detect_frame_box(image_path):
+    """Detect pink/custom painted board or frame coordinates automatically using HSV."""
+    try:
+        import cv2
+        import numpy as np
+        img = cv2.imread(image_path)
+        if img is None:
+            return None
+        h, w, _ = img.shape
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        # Pink in HSV: hue 300-360 (wraps as 0-10 and 150-180 in OpenCV 0-179 scale),
+        # medium-high saturation, medium-high value.
+        # OpenCV hue is 0-179 (half of 0-360).
+        # Pink/Rose: hue 150-179 (300-358 degrees) OR 0-10 (wraps around red)
+        mask1 = cv2.inRange(hsv, np.array([150, 30, 100]), np.array([179, 255, 255]))
+        mask2 = cv2.inRange(hsv, np.array([0,   30, 100]), np.array([10,  200, 255]))
+        pink_mask = cv2.bitwise_or(mask1, mask2)
+        # Morphological closing to fill small gaps
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+        pink_mask = cv2.morphologyEx(pink_mask, cv2.MORPH_CLOSE, kernel)
+        contours, _ = cv2.findContours(pink_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return None
+        # Pick the largest contour that covers at least 2% of the image
+        best = max(contours, key=cv2.contourArea)
+        x, y, cw, ch = cv2.boundingRect(best)
+        if cw * ch < (w * h * 0.02):
+            return None
+        return {
+            'rx': round(float((x + cw / 2) / w), 4),
+            'ry': round(float((y + ch / 2) / h), 4),
+            'scale': round(float(cw / w), 4),
+            'height_ratio': round(float(ch / h), 4),
+        }
+    except Exception:
+        pass
+    return None
+
+
 @app.route('/design/<int:design_id>')
+
 @login_required
 def result(design_id):
     query = Design.query.filter_by(id=design_id)
@@ -1113,8 +1170,10 @@ def result(design_id):
                  else None)
     # Furniture from the shop catalogue is available to drag onto the result.
     furniture = visible_products().order_by(Product.created_at.desc()).all()
+    detected_frame = detect_frame_box(os.path.join(STATIC_UPLOADS, 'output', d.output_image))
     return render_template('result.html', d=d, nearby=nearby, placement=placement,
                            depth_url=depth_url,
+                           detected_frame=detected_frame,
                            room_summary=describe_room(
                                d.room_type, d.style, d.budget,
                                d.width_m, d.length_m, d.height_m),

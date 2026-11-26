@@ -93,6 +93,8 @@
   {% endif %}
 
   <section class="panel placement-panel" data-placement data-result-image="{{ after }}"
+           data-mask-coords="{{ d.mask_coords }}"
+           {% if detected_frame %}data-detected-frame='{{ detected_frame|tojson }}'{% endif %}
            data-save-url="{{ url_for('save_placement', design_id=d.id) }}">
     <div class="placement-head">
       <div>
@@ -100,7 +102,10 @@
         <p class="sub">Drag an item onto your result, then move, resize and rotate it until it fits.</p>
       </div>
       <div class="head-actions">
+        <button type="button" class="btn btn-ghost" data-snap-frame title="Automatically fit item to the frame">Fit to frame</button>
         <button type="button" class="btn btn-ghost" data-clear-placement>{{ icon('x') }} Clear</button>
+
+
         <button type="button" class="btn btn-ghost" data-save-placement>{{ icon('check') }} Save placement</button>
         <button type="button" class="btn btn-primary" data-download-placement>{{ icon('download') }} Download design</button>
       </div>

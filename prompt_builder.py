@@ -47,13 +47,14 @@ def _dimension(value, label):
 
 def build_prompt(user_prompt, room_type='', style='', budget='', preferences='',
                  width_m=None, length_m=None, height_m=None, whole_room=False,
-                 detection_notes='', depth_hint=''):
+                 detection_notes='', depth_hint='', reference_style=''):
     """Return the final generation prompt.
 
     ``detection_notes`` is accepted for callers that already have an analysis
     result; it is only used to recover dimensions when none were supplied.
     ``depth_hint`` adds a short relative-depth cue when the optional depth
     assistant is enabled; the raw user prompt is never modified.
+    ``reference_style`` appends extracted aesthetic cues from an uploaded reference photo.
     """
     request = _clean(user_prompt)
     if not request:
@@ -62,6 +63,11 @@ def build_prompt(user_prompt, room_type='', style='', budget='', preferences='',
     parts = [request]
     if whole_room:
         parts.insert(0, 'Redesign the entire visible room, keeping the existing layout')
+
+    ref = _clean(reference_style)
+    if ref:
+        parts.append('styled after visual reference (' + ref + ')')
+
 
     room = _clean(ROOM_TYPES.get(_clean(room_type).lower(), _clean(room_type)))
     if room and room.lower() not in ('any room', 'choose a room', 'other'):
